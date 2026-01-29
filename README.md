@@ -71,6 +71,26 @@ Version 2 is a complete rewrite with a modernized architecture:
 - **Theme-aware** - visualization adapts to Cyber/Dark/Light themes
 - **Interactive controls** - fit view, auto-layout, node selection with details popup
 
+### Interactive Device Polling
+Poll individual devices directly from the Map Viewer for on-demand identification and inventory — no full discovery required.
+
+- **SNMP fingerprinting** - identifies vendor, model, OS version via Rapid7 Recog patterns
+- **Interface inventory** - collects ifTable with MAC addresses and OUI vendor lookup
+- **ARP table collection** - neighbor IP/MAC mappings with vendor identification
+- **Two operating modes**:
+  - **Local mode** - direct SNMP using pysnmp-lextudio (works on Windows/Linux/Mac)
+  - **Proxy mode** - for targets only reachable from a jump host ([SNMP Proxy](snmp_proxy/README.md))
+- **Export to Excel** - multi-sheet workbook with Summary, Interfaces, and ARP data
+- **Update topology** - push discovered platform/vendor back to map nodes
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/device_poll_summary.png" alt="Device Poll - Summary with Fingerprint" width="600">
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/device_poll_interfaces.png" alt="Device Poll - Interface Table" width="600">
+</p>
+
 ### Themed GUI
 - **Three themes** - Cyber (cyan), Dark (gold), Light (blue)
 - **Real-time progress** - live counters, depth tracking, log output
@@ -598,6 +618,7 @@ See [README_Style_Guide.md](README_Style_Guide.md) for widget styling details.
 | [README_SSH_Discovery.md](README_SSH_Discovery.md) | SSH fallback module |
 | [README_Progress_events.md](README_Progress_events.md) | GUI progress event reference |
 | [README_Style_Guide.md](README_Style_Guide.md) | PyQt6 widget theming guide |
+| [snmp_proxy/README.md](snmp_proxy/README.md) | SNMP proxy deployment for remote polling |
 
 ---
 
@@ -619,6 +640,9 @@ See [README_Style_Guide.md](README_Style_Guide.md) for widget styling details.
 - Security Analysis with CVE vulnerability scanning
 - Export to yEd (GraphML with port labels)
 - Built-in help system
+- Interactive device polling (local + proxy modes)
+- Device fingerprinting via Rapid7 Recog patterns
+- OUI vendor lookup for MAC addresses
 
 ### 📋 Planned
 - Map enhancement tools (manual node positioning, annotations)
@@ -721,3 +745,5 @@ GPL v3 is required due to the use of PyQt6.
 - GUI powered by [PyQt6](https://www.riverbankcomputing.com/software/pyqt/)
 - Encryption via [cryptography](https://cryptography.io/)
 - CVE data from [NIST National Vulnerability Database](https://nvd.nist.gov/)
+- Device fingerprinting via [Rapid7 Recog](https://github.com/rapid7/recog)
+- OUI database from [Wireshark](https://www.wireshark.org/)
