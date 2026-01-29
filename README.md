@@ -18,17 +18,19 @@ Secure Cartography is a network discovery tool that crawls your infrastructure v
 
 Version 2 is a complete rewrite with a modernized architecture:
 
-| Feature | v1 | v2 |
-|---------|----|----|
-| Discovery Engine | Synchronous, single-threaded | **Async with configurable concurrency** |
-| Credential Storage | YAML + keyring | **SQLite vault with AES-256 encryption** |
-| CLI | Basic | **Full-featured with test/discover/crawl commands** |
-| Progress Reporting | Callbacks | **Structured events for GUI integration** |
-| SSH Support | Primary | **Fallback when SNMP unavailable** |
-| SNMP Support | v2c only | **v2c and v3 (authPriv)** |
-| GUI | PyQt5 | **PyQt6 with theme support (Cyber/Dark/Light)** |
-| Topology Viewer | External | **Embedded Cytoscape.js with live preview** |
-| Security Analysis | None | **CVE vulnerability scanning via NIST NVD** |
+| Feature | v1                           | v2                                                                     |
+|---------|------------------------------|------------------------------------------------------------------------|
+| Discovery Engine | Synchronous, single-threaded | **Async with configurable concurrency**                                |
+| Discovery Protocol | SSH only                     | **SNMP-first with SSH fallback**                                       |
+| Credential Storage | No credential persistance    | **SQLite vault with AES-256 encryption**                               |
+| CLI | Basic                        | **Full-featured with test/discover/crawl commands**                    |
+| Progress Reporting | Callbacks                    | **Structured events for GUI integration**                              |
+| SNMP Support | None                         | **v2c and v3 (authPriv)**                                              |
+| Vendor Support | Cisco, Arista                | **+ Cisco, Arista and Juniper, Others fingerprinted based on sysdesc** |
+| GUI | PyQt6                        | **PyQt6 with theme support (Cyber/Dark/Light)**                        |
+| Topology Viewer | External (yEd/Draw.io)       | **Embedded Cytoscape.js with live preview, yEd Export**                |
+| Security Analysis | None                         | **CVE vulnerability scanning via NIST NVD**                            |
+| Device Polling | None                         | **Interactive SNMP fingerprinting from map**                           |
 
 ---
 
@@ -81,14 +83,10 @@ Poll individual devices directly from the Map Viewer for on-demand identificatio
   - **Local mode** - direct SNMP using pysnmp-lextudio (works on Windows/Linux/Mac)
   - **Proxy mode** - for targets only reachable from a jump host ([SNMP Proxy](snmp_proxy/README.md))
 - **Export to Excel** - multi-sheet workbook with Summary, Interfaces, and ARP data
-- **Update topology** - push discovered platform/vendor back to map nodes
+
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/device_poll_summary.png" alt="Device Poll - Summary with Fingerprint" width="600">
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/device_poll_interfaces.png" alt="Device Poll - Interface Table" width="600">
+  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/snmp1.png" alt="Device Poll - Interface Table" width="600">
 </p>
 
 ### Themed GUI
@@ -104,9 +102,8 @@ Poll individual devices directly from the Map Viewer for on-demand identificatio
 | Cisco NX-OS | ✓ | ✓ | ✓ |
 | Arista EOS | ✓ | ✓ | ✓ |
 | Juniper JUNOS | ✓ | ✓ | ✓ |
-| Palo Alto PAN-OS | - | ✓ | ✓ |
-| Fortinet FortiOS | - | ✓ | ✓ |
 
+* Others will likely appear but testing has been limited
 ---
 
 ## Screenshots
@@ -701,6 +698,10 @@ The Security Widget operates independently of the discovery engine:
 ---
 
 ## Performance
+<p align="center">
+  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/bigmap2.jpg" alt="Large-scale topology - 362 devices" width="800">
+</p>
+<p align="center"><i>Production-scale discovery: 362 devices, 670 connections</i></p>
 
 Typical discovery rates:
 - Single device (SNMP): 2-5 seconds
