@@ -29,7 +29,7 @@ def parse_requirements(filename):
 
 setup(
     name="secure-cartography",
-    version="2.0.12",
+    version="2.0.13",
     author="Scott Peterman",
     author_email="scottpeterman@gmail.com",
     description="SSH & SNMP-Based Network Discovery and Topology Mapping",
@@ -66,7 +66,7 @@ setup(
     },
 
     # Python version requirement
-    python_requires=">=3.10",
+    python_requires=">=3.9",
 
     # Dependencies from requirements.txt
     install_requires=parse_requirements("requirements.txt"),

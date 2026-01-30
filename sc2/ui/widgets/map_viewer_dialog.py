@@ -1065,20 +1065,27 @@ class MapViewerDialog(QDialog):
             QMessageBox.warning(self, "Export Failed", f"Error exporting: {e}")
 
     def _on_save_map(self):
-        """Save edited topology to JSON file."""
+        """Export filtered topology to JSON file."""
         if not self._topology_data:
-            QMessageBox.warning(self, "Save", "No topology loaded to save.")
+            QMessageBox.warning(self, "Export", "No topology loaded to export.")
+            return
+
+        # Get filtered topology (same as what's displayed in viewer)
+        display_data = self._get_display_topology()
+        if not display_data:
+            QMessageBox.warning(self, "Export", "No topology data after filtering.")
             return
 
         # Get save path
         if self._current_file:
-            default_path = str(self._current_file)
+            default_name = self._current_file.stem + "_export.json"
+            default_path = str(self._current_file.parent / default_name)
         else:
-            default_path = "topology.json"
+            default_path = "topology_export.json"
 
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Topology Map",
+            "Export Topology to JSON",
             default_path,
             "JSON Files (*.json)"
         )
@@ -1088,56 +1095,21 @@ class MapViewerDialog(QDialog):
 
         try:
             with open(path, 'w', encoding='utf-8') as f:
-                json.dump(self._topology_data, f, indent=2)
+                json.dump(display_data, f, indent=2)
 
-            self._current_file = Path(path)
-            self.setWindowTitle(f"Map Viewer - {self._current_file.name}")
-            self._status_label.setText(f"Saved: {self._current_file.name}")
+            # Build status message reflecting filters
+            node_count, edge_count = self._count_topology(display_data)
+            status_msg = f"Exported: {Path(path).name} ({node_count} devices)"
+            filter_notes = []
+            if self._connected_only:
+                filter_notes.append("connected only")
+            if not self._include_leaves:
+                filter_notes.append("infra only")
+            if filter_notes:
+                status_msg += f" [{', '.join(filter_notes)}]"
+            self._status_label.setText(status_msg)
         except IOError as e:
             QMessageBox.warning(self, "Save Failed", f"Error saving file: {e}")
-
-    def _set_topology(
-        self,
-        data: Dict[str, Any],
-        source_file: Optional[Path] = None,
-        name: Optional[str] = None
-    ) -> bool:
-        """
-        Common topology initialization for both memory and file loading.
-
-        Args:
-            data: Topology dictionary (SC2 format, Cytoscape format, etc.)
-            source_file: Path if loaded from file, None if from memory
-            name: Display name (used when source_file is None)
-
-        Returns:
-            True if topology was set successfully
-        """
-        if not isinstance(data, dict):
-            return False
-
-        # Core state initialization
-        self._topology_data = data
-        self._current_file = source_file
-
-        # Determine display name
-        if source_file:
-            display_name = source_file.name
-            status_text = f"Loaded: {display_name}"
-        else:
-            display_name = name or "Untitled"
-            status_text = f"Loaded: {display_name} (from memory)"
-
-        # Update UI
-        self.setWindowTitle(f"Map Viewer - {display_name}")
-        self._update_stats()
-        self._status_label.setText(status_text)
-
-        # Load into viewer if ready
-        if self._viewer_ready:
-            self._load_topology_to_viewer()
-
-        return True
 
     def load_topology(self, data: Dict[str, Any], name: Optional[str] = None):
         """
@@ -1147,7 +1119,20 @@ class MapViewerDialog(QDialog):
             data: Topology dictionary (SC2 format, Cytoscape format, etc.)
             name: Optional name for display in title bar
         """
-        self._set_topology(data, source_file=None, name=name)
+        if not isinstance(data, dict):
+            return
+
+        self._current_file = None  # No file associated
+        self._topology_data = data
+
+        display_name = name or "Untitled"
+        self.setWindowTitle(f"Map Viewer - {display_name}")
+
+        self._update_stats()
+        self._status_label.setText(f"Loaded: {display_name} (from memory)")
+
+        if self._viewer_ready:
+            self._load_topology_to_viewer()
 
 
     def open_file(self, path: str) -> bool:
@@ -1181,11 +1166,22 @@ class MapViewerDialog(QDialog):
             QMessageBox.warning(self, "Invalid Format", "Map file must be a JSON object.")
             return False
 
-        # Use unified initialization path
-        if not self._set_topology(data, source_file=file_path):
-            return False
+        # Store data (unfiltered - filtering happens at display time)
+        self._current_file = file_path
+        self._topology_data = data
 
-        # Emit signal for file-based loads
+        # Update window title
+        self.setWindowTitle(f"Map Viewer - {file_path.name}")
+
+        # Update status
+        self._update_stats()
+        self._status_label.setText(f"Loaded: {file_path.name}")
+
+        # Load into viewer (with filtering if enabled)
+        if self._viewer_ready:
+            self._load_topology_to_viewer()
+
+        # Emit signal
         self.file_loaded.emit(str(file_path))
 
         return True
