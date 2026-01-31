@@ -379,6 +379,7 @@ class MapViewerDialog(QDialog):
         self._export_combo.setFixedWidth(100)
         self._export_combo.addItem("PNG", "png")
         self._export_combo.addItem("yEd", "graphml")
+        self._export_combo.addItem("Draw.io", "drawio")
         self._export_combo.addItem("CSV", "csv")
         self._export_combo.addItem("JSON", "json")
         self._export_combo.setCurrentIndex(-1)
@@ -502,6 +503,8 @@ class MapViewerDialog(QDialog):
             self._on_export_png()
         elif export_type == "graphml":
             self._on_export_graphml()
+        elif export_type == "drawio":
+            self._on_export_drawio()
         elif export_type == "csv":
             self._on_export_csv()
         elif export_type == "json":
@@ -999,6 +1002,72 @@ class MapViewerDialog(QDialog):
                 QMessageBox.warning(self, "Export Failed", f"Error saving file: {e}")
 
         self._viewer._run_js("TopologyViewer.exportPNG()", on_png_ready)
+
+
+    def _on_export_drawio(self):
+        """Export topology to Draw.io format with Cisco stencils and vendor coloring."""
+        if not self._topology_data:
+            QMessageBox.warning(self, "Export", "No topology loaded to export.")
+            return
+
+        # Determine default filename
+        if self._current_file:
+            default_name = self._current_file.stem + ".drawio"
+            start_dir = str(self._current_file.parent / default_name)
+        else:
+            start_dir = "topology.drawio"
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export to Draw.io",
+            start_dir,
+            "Draw.io Files (*.drawio);;XML Files (*.xml)"
+        )
+
+        if not path:
+            return
+
+        try:
+            from sc2.export.drawio_exporter import DrawioExporter
+
+            # Get filtered topology (same as what's displayed in viewer)
+            display_data = self._get_display_topology()
+
+            if not display_data:
+                QMessageBox.warning(self, "Export", "No topology data after filtering.")
+                return
+
+            # Create exporter - filtering already applied, so disable exporter's filters
+            exporter = DrawioExporter(
+                use_icons=True,
+                include_endpoints=True,   # Don't filter again - already filtered
+                connected_only=False,     # Don't filter again - already filtered
+                layout_type='tree'        # Default to hierarchical layout
+            )
+
+            exporter.export(display_data, Path(path))
+
+            # Update status message to reflect filtering
+            status_msg = f"Exported: {Path(path).name}"
+            filter_notes = []
+            if self._connected_only:
+                filter_notes.append("connected only")
+            if not self._include_leaves:
+                filter_notes.append("infra only")
+            if filter_notes:
+                status_msg += f" ({', '.join(filter_notes)})"
+            self._status_label.setText(status_msg)
+
+        except ImportError:
+            QMessageBox.warning(
+                self,
+                "Export Failed",
+                "Draw.io exporter not available.\n"
+                "Ensure sc2.export.drawio_exporter is installed."
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", f"Error exporting: {e}")
+
 
     def _on_export_graphml(self):
         """Export topology to yEd GraphML format."""

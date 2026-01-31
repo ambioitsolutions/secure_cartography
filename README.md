@@ -2,7 +2,7 @@
 
 **SSH & SNMP-Based Network Discovery and Topology Mapping**
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 
@@ -28,7 +28,7 @@ Version 2 is a complete rewrite with a modernized architecture:
 | SNMP Support | None                         | **v2c and v3 (authPriv)**                                              |
 | Vendor Support | Cisco, Arista                | **+ Cisco, Arista and Juniper, Others fingerprinted based on sysdesc** |
 | GUI | PyQt6                        | **PyQt6 with theme support (Cyber/Dark/Light)**                        |
-| Topology Viewer | External (yEd/Draw.io)       | **Embedded Cytoscape.js with live preview, yEd Export**                |
+| Topology Viewer | External (yEd/Draw.io)       | **Embedded Cytoscape.js with vendor coloring, yEd & Draw.io export**   |
 | Security Analysis | None                         | **CVE vulnerability scanning via NIST NVD**                            |
 | Device Polling | None                         | **Interactive SNMP fingerprinting from map**                           |
 
@@ -68,10 +68,24 @@ Version 2 is a complete rewrite with a modernized architecture:
 ### Live Topology Preview
 - **Embedded Cytoscape.js viewer** - interactive network visualization
 - **Real-time rendering** - topology displayed immediately after discovery
-- **Vendor-specific icons** - Cisco, Arista, Juniper with distinct styling
+- **Vendor-specific styling** - Cisco (blue), Arista (green), Juniper (orange) with distinct colors
 - **Undiscovered peer nodes** - referenced but unreachable devices shown with warning markers
 - **Theme-aware** - visualization adapts to Cyber/Dark/Light themes
 - **Interactive controls** - fit view, auto-layout, node selection with details popup
+
+### Draw.io Export
+One-click export to Draw.io format for professional network documentation:
+
+- **Cisco mxgraph stencils** - native Draw.io shapes for switches, routers, firewalls, wireless
+- **Vendor coloring** - automatic fill colors match the embedded viewer (Cisco blue, Juniper orange, Arista green)
+- **Hierarchical layout** - tree algorithm positions devices by network tier
+- **Interface labels** - port-to-port connections preserved on edges
+- **Universal compatibility** - open in Draw.io desktop, web (diagrams.net), or VS Code extension
+- **Edit and annotate** - recipients can modify layouts, add notes, highlight paths
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/drawio_multivendor.png" alt="Draw.io Export - Multi-vendor topology" width="800">
+</p>
 
 ### Interactive Device Polling
 Poll individual devices directly from the Map Viewer for on-demand identification and inventory — no full discovery required.
@@ -291,11 +305,19 @@ sc2/
 │   └── utils/
 │       └── tfsm_fire.py       # TextFSM auto-template selection
 │
+├── export/                    # Export modules
+│   ├── graphml_exporter.py    # yEd GraphML export
+│   └── drawio_exporter.py     # Draw.io export with vendor styling
+│
 └── ui/                        # PyQt6 GUI
     ├── themes.py              # Theme system (Cyber/Dark/Light)
     ├── login.py               # Vault unlock dialog
     ├── main_window.py         # Main application window
     ├── help_dialog.py         # Help system (GUI/CLI/Security docs)
+    │
+    ├── assets/
+    │   └── icons_lib/
+    │       └── platform_icon_drawio.json  # Draw.io icon mappings
     │
     └── widgets/               # Custom themed widgets
         ├── panel.py               # Base panel with title bar
@@ -323,13 +345,21 @@ sc2/
 The embedded topology viewer uses [Cytoscape.js](https://js.cytoscape.org/) for interactive network visualization.
 
 ### Features
-- **Automatic layout** - COSE algorithm for organic network arrangement
-- **Vendor icons** - Platform-specific SVG icons (Cisco, Arista, Juniper)
+- **Automatic layout** - Dagre algorithm for hierarchical network arrangement
+- **Vendor coloring** - Platform-specific border and fill colors (Cisco blue, Juniper orange, Arista green)
 - **Undiscovered nodes** - Peers referenced but not crawled shown with dashed borders and ⚠ markers
 - **Edge labels** - Interface pairs displayed on connections
 - **Click inspection** - Select nodes to view device details
 - **Theme integration** - Colors adapt to current UI theme
-- **yEd Export** - Export to GraphML for professional diagrams with port labels
+
+### Export Options
+| Format | Use Case |
+|--------|----------|
+| **Draw.io** | Editable diagrams with Cisco stencils for documentation, Confluence, SharePoint |
+| **yEd (GraphML)** | Professional diagrams with automatic layouts and port labels |
+| **PNG** | Quick image export for reports and presentations |
+| **CSV** | Device and connection lists for spreadsheet analysis |
+| **JSON** | Raw topology data for custom processing |
 
 ### Data Flow
 ```
@@ -633,9 +663,11 @@ See [README_Style_Guide.md](README_Style_Guide.md) for widget styling details.
 - Custom themed widgets
 - Discovery↔UI integration with throttled events
 - Live topology preview with Cytoscape.js
+- Vendor coloring in topology viewer
 - Undiscovered peer node visualization
 - Security Analysis with CVE vulnerability scanning
 - Export to yEd (GraphML with port labels)
+- Export to Draw.io with Cisco stencils and vendor coloring
 - Built-in help system
 - Interactive device polling (local + proxy modes)
 - Device fingerprinting via Rapid7 Recog patterns
@@ -698,10 +730,6 @@ The Security Widget operates independently of the discovery engine:
 ---
 
 ## Performance
-<p align="center">
-  <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/bigmap2.jpg" alt="Large-scale topology - 362 devices" width="800">
-</p>
-<p align="center"><i>Production-scale discovery: 362 devices, 670 connections</i></p>
 
 Typical discovery rates:
 - Single device (SNMP): 2-5 seconds
@@ -722,7 +750,6 @@ GUI remains responsive during discovery due to throttled event architecture.
 
 This project is licensed under the **GNU General Public License v3.0** - see [LICENSE](LICENSE) for details.
 
-GPL v3 is required due to the use of PyQt6.
 
 ---
 
@@ -731,7 +758,7 @@ GPL v3 is required due to the use of PyQt6.
 **Scott Peterman** - Network Engineer
 
 - GitHub: [@scottpeterman](https://github.com/scottpeterman)
-- LinkedIn: [scottpeterman](https://www.linkedin.com/in/scott-peterman-networkeng/)
+- Homepage: [scottpeterman](https://scottpeterman.github.io/)
 
 *Built by a network engineer who got tired of manually drawing topology diagrams.*
 
@@ -748,3 +775,4 @@ GPL v3 is required due to the use of PyQt6.
 - CVE data from [NIST National Vulnerability Database](https://nvd.nist.gov/)
 - Device fingerprinting via [Rapid7 Recog](https://github.com/rapid7/recog)
 - OUI database from [Wireshark](https://www.wireshark.org/)
+- Draw.io stencils from [mxgraph Cisco library](https://github.com/jgraph/mxgraph)

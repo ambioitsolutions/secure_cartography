@@ -276,6 +276,7 @@ const TopologyViewer = {
             {
                 selector: 'node',
                 style: {
+                    'background-color': 'data(vendorFill)',
                     'background-image': 'data(icon)',
                     'background-fit': 'contain',
                     'background-clip': 'none',
@@ -293,8 +294,8 @@ const TopologyViewer = {
                     'text-background-padding': '3px',
                     'text-background-shape': 'roundrectangle',
                     'border-width': 2,
-                    'border-color': accentColor,
-                    'border-opacity': 0.4
+                    'border-color': 'data(vendorColor)',
+                    'border-opacity': 0.8
                 }
             },
             {
@@ -316,9 +317,8 @@ const TopologyViewer = {
             {
                 selector: 'node:selected',
                 style: {
-                    'border-width': 3,
-                    'border-opacity': 1,
-                    'border-color': accentColor
+                    'border-width': 4,
+                    'border-opacity': 1
                 }
             },
             {
@@ -560,7 +560,9 @@ const TopologyViewer = {
                         ip: nodeData.ip || '',
                         platform: nodeData.platform || 'Unknown',
                         icon: nodeData.icon || this.getIconForPlatform(nodeData.platform),
-                        discovered: nodeData.discovered !== false
+                        discovered: nodeData.discovered !== false,
+                        vendorColor: this.getVendorColor(nodeData.platform, nodeData.id),
+                        vendorFill: this.getVendorFill(nodeData.platform, nodeData.id)
                     },
                     position: n.position || undefined
                 });
@@ -603,7 +605,9 @@ const TopologyViewer = {
                     ip: details.ip || '',
                     platform: details.platform || 'Unknown',
                     icon: details.icon || this.getIconForPlatform(details.platform),
-                    discovered: true
+                    discovered: true,
+                    vendorColor: this.getVendorColor(details.platform, deviceName),
+                    vendorFill: this.getVendorFill(details.platform, deviceName)
                 }
             });
         }
@@ -624,7 +628,9 @@ const TopologyViewer = {
                             ip: '',
                             platform: 'Undiscovered',
                             icon: this.getUndiscoveredIcon(),
-                            discovered: false
+                            discovered: false,
+                            vendorColor: '#ff6b6b',
+                            vendorFill: 'rgba(255, 107, 107, 0.2)'
                         }
                     });
                 }
@@ -706,6 +712,73 @@ const TopologyViewer = {
                 <circle cx="28" cy="24" r="3" fill="#ffaa00"/><rect x="34" y="20" width="6" height="8" rx="1" fill="#4a9eff"/>
             </svg>
         `);
+    },
+
+    // Vendor colors matching draw.io export
+    vendorColors: {
+        'cisco': '#049fd9',    // Cisco blue
+        'juniper': '#F58536',  // Juniper orange
+        'arista': '#2D8659',   // Arista green
+        'paloalto': '#FA582D', // Palo Alto orange-red
+        'fortinet': '#EE3124', // Fortinet red
+        'default': '#4a9eff'   // Default accent blue
+    },
+
+    // Muted fill colors (semi-transparent for background tint)
+    vendorFills: {
+        'cisco': 'rgba(4, 159, 217, 0.25)',
+        'juniper': 'rgba(245, 133, 54, 0.25)',
+        'arista': 'rgba(45, 134, 89, 0.25)',
+        'paloalto': 'rgba(250, 88, 45, 0.25)',
+        'fortinet': 'rgba(238, 49, 36, 0.25)',
+        'default': 'rgba(74, 158, 255, 0.2)'
+    },
+
+    detectVendor(platform, nodeId) {
+        const p = (platform || '').toLowerCase();
+        const n = (nodeId || '').toLowerCase();
+
+        // Juniper patterns
+        const juniperPatterns = ['junos', 'juniper', 'mx', 'qfx', 'ex2', 'ex3', 'ex4', 'srx', 'ptx', 'acx'];
+        for (const pattern of juniperPatterns) {
+            if (p.includes(pattern) || n.includes(pattern)) return 'juniper';
+        }
+
+        // Arista patterns
+        const aristaPatterns = ['arista', 'eos', 'veos', 'dcs-', 'ccs-'];
+        for (const pattern of aristaPatterns) {
+            if (p.includes(pattern) || n.includes(pattern)) return 'arista';
+        }
+
+        // Palo Alto patterns
+        const paloPatterns = ['palo', 'pan-', 'pa-'];
+        for (const pattern of paloPatterns) {
+            if (p.includes(pattern) || n.includes(pattern)) return 'paloalto';
+        }
+
+        // Fortinet patterns
+        const fortiPatterns = ['forti', 'fortigate', 'fortios'];
+        for (const pattern of fortiPatterns) {
+            if (p.includes(pattern) || n.includes(pattern)) return 'fortinet';
+        }
+
+        // Cisco patterns (check last as it's the broadest)
+        const ciscoPatterns = ['cisco', 'ios', 'nx-os', 'nexus', 'catalyst', 'c9', 'ws-c', 'isr', 'asr', 'asa'];
+        for (const pattern of ciscoPatterns) {
+            if (p.includes(pattern) || n.includes(pattern)) return 'cisco';
+        }
+
+        return 'default';
+    },
+
+    getVendorColor(platform, nodeId) {
+        const vendor = this.detectVendor(platform, nodeId);
+        return this.vendorColors[vendor] || this.vendorColors['default'];
+    },
+
+    getVendorFill(platform, nodeId) {
+        const vendor = this.detectVendor(platform, nodeId);
+        return this.vendorFills[vendor] || this.vendorFills['default'];
     },
 
     setPlatformMap(mapJson) {
