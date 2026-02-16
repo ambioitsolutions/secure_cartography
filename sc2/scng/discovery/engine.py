@@ -155,6 +155,28 @@ def is_mac_address(value: str) -> bool:
     return bool(MAC_PATTERN.match(value))
 
 
+def _extract_fortios_sysdescr(raw_output: str) -> str:
+    """Extract a clean sysDescr from FortiOS 'get system status' output.
+
+    FortiOS doesn't support 'show version'. Instead, 'get system status'
+    returns key: value pairs. We extract the Version line which contains
+    the model and firmware version, e.g.:
+        "Version: FortiGate-40F v7.4.11,build2878,260126 (GA.M)"
+    becomes:
+        "FortiGate-40F v7.4.11"
+    """
+    lines = raw_output.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('Version:'):
+            # "Version: FortiGate-40F v7.4.11,build2878,260126 (GA.M)"
+            version_str = stripped[len('Version:'):].strip()
+            # Strip build info: everything after the first comma
+            if ',' in version_str:
+                version_str = version_str[:version_str.index(',')]
+            return version_str.strip()
+    return raw_output[:200].strip()
+
 
 class DiscoveryEngine:
     """
@@ -681,30 +703,38 @@ class DiscoveryEngine:
                         device.fqdn = ssh_result.hostname
 
                 # Get version info from raw output if available
-                if ssh_result.raw_output.get('show_version'):
-                    raw_version = ssh_result.raw_output['show_version']
-                    # Strip SSH command echo (first line contains prompt + command)
-                    # e.g., "jjohnson@host> show version\r\nActual output..."
-                    lines = raw_version.replace('\r\n', '\n').replace('\r', '\n').split('\n')
-                    # Drop leading blank lines and the command echo line
-                    cleaned = []
-                    for line in lines:
-                        stripped = line.strip()
-                        # Skip empty lines at the start
-                        if not cleaned and not stripped:
-                            continue
-                        # Skip the command echo (contains the command name)
-                        if not cleaned and ('show version' in stripped.lower()
-                                            or 'show system' in stripped.lower()
-                                            or '/system resource' in stripped.lower()):
-                            continue
-                        # Skip trailing prompt lines
-                        if stripped.endswith(('>', '#', '$', ']')):
-                            last_word = stripped.split()[-1] if stripped.split() else ''
-                            if '@' in last_word or last_word in ('>', '#', '$'):
+                # FortiOS uses 'get system status' instead of 'show version'
+                raw_version = (
+                    ssh_result.raw_output.get('show_version')
+                    or ssh_result.raw_output.get('get_system_status')
+                )
+                if raw_version:
+                    # Check if this is FortiOS 'get system status' output
+                    if ssh_result.vendor == DeviceVendor.FORTINET:
+                        device.sys_descr = _extract_fortios_sysdescr(raw_version)
+                    else:
+                        # Strip SSH command echo (first line contains prompt + command)
+                        # e.g., "jjohnson@host> show version\r\nActual output..."
+                        lines = raw_version.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                        # Drop leading blank lines and the command echo line
+                        cleaned = []
+                        for line in lines:
+                            stripped = line.strip()
+                            # Skip empty lines at the start
+                            if not cleaned and not stripped:
                                 continue
-                        cleaned.append(line)
-                    device.sys_descr = '\n'.join(cleaned).strip()[:200]
+                            # Skip the command echo (contains the command name)
+                            if not cleaned and ('show version' in stripped.lower()
+                                                or 'show system' in stripped.lower()
+                                                or '/system resource' in stripped.lower()):
+                                continue
+                            # Skip trailing prompt lines
+                            if stripped.endswith(('>', '#', '$', ']')):
+                                last_word = stripped.split()[-1] if stripped.split() else ''
+                                if '@' in last_word or last_word in ('>', '#', '$'):
+                                    continue
+                            cleaned.append(line)
+                        device.sys_descr = '\n'.join(cleaned).strip()[:200]
 
                 # Process neighbors - normalize their hostnames too
                 for neighbor in ssh_result.neighbors:

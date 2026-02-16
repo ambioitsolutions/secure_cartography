@@ -56,6 +56,7 @@ PAGINATION_DISABLE_SHOTGUN = [
     'no page',                     # HP ProCurve
     'set cli pager off',           # Palo Alto
     'no-more',                     # Pica8 PicOS (sets no-paging mode)
+    'config system console\nset output standard\nend',  # Fortinet FortiOS
 ]
 
 
@@ -430,9 +431,10 @@ class SSHClient:
             return match.group(1)
 
         # Network device style: hostname# or hostname> or hostname(config)#
+        # FortiOS uses "hostname #" (space before #)
         # Strip config mode indicators first
         clean_prompt = re.sub(r'\([^)]+\)', '', prompt)
-        match = re.match(r'^([A-Za-z0-9\-_.]+)[#>$%:\]]', clean_prompt)
+        match = re.match(r'^([A-Za-z0-9\-_.]+)\s*[#>$%:\]]', clean_prompt)
         if match:
             return match.group(1)
 

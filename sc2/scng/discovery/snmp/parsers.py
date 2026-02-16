@@ -325,6 +325,12 @@ def decode_int(value: Any) -> Optional[int]:
 
 # Vendor detection patterns (case-insensitive)
 VENDOR_PATTERNS = {
+    # FORTINET must come before CISCO: 'FortiOS' contains 'ios'
+    DeviceVendor.FORTINET: [
+        r'fortinet',
+        r'fortigate',
+        r'fortios',
+    ],
     DeviceVendor.CISCO: [
         r'cisco',
         r'ios',
@@ -347,11 +353,6 @@ VENDOR_PATTERNS = {
     DeviceVendor.PALOALTO: [
         r'palo\s*alto',
         r'pan-?os',
-    ],
-    DeviceVendor.FORTINET: [
-        r'fortinet',
-        r'fortigate',
-        r'fortios',
     ],
     DeviceVendor.MIKROTIK: [
         r'mikrotik',

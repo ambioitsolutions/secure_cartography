@@ -750,3 +750,123 @@ class TestExtractPlatformSSHCleanup:
         assert "4.7.1M-EC2" in result
         assert "858d9863c8" not in result
         assert "2009-2026" not in result
+
+
+# ---------------------------------------------------------------------------
+# FortiOS (FortiGate) support tests
+# ---------------------------------------------------------------------------
+
+class TestExtractPlatformFortiOS:
+    """Test FortiGate/FortiOS platform string extraction."""
+
+    def test_fortigate_ssh_sysdescr(self):
+        """FortiGate sys_descr from 'get system status' extraction."""
+        # After _extract_fortios_sysdescr, sys_descr = "FortiGate-40F v7.4.11"
+        result = extract_platform("FortiGate-40F v7.4.11")
+        assert result == "FortiGate 40F FortiOS 7.4.11"
+
+    def test_fortigate_large_model(self):
+        """FortiGate larger model with version."""
+        result = extract_platform("FortiGate-3200D v7.2.5")
+        assert result == "FortiGate 3200D FortiOS 7.2.5"
+
+    def test_fortigate_100e(self):
+        """FortiGate 100E model."""
+        result = extract_platform("FortiGate-100E v7.0.12")
+        assert result == "FortiGate 100E FortiOS 7.0.12"
+
+    def test_fortigate_no_version(self):
+        """FortiGate without version info."""
+        result = extract_platform("FortiGate-40F")
+        assert result == "FortiGate 40F"
+
+    def test_fortios_snmp_sysdescr(self):
+        """FortiOS SNMP sysDescr format."""
+        result = extract_platform("Fortinet FortiGate-60F v7.4.1")
+        assert "FortiGate 60F" in result
+        assert "FortiOS 7.4.1" in result
+
+    def test_fortigate_model_with_space(self):
+        """FortiGate model with space separator."""
+        result = extract_platform("FortiGate 40F v7.4.11")
+        assert "FortiGate 40F" in result
+        assert "FortiOS 7.4.11" in result
+
+
+class TestFortiOSVendorDetection:
+    """Test that FortiOS vendor detection works correctly."""
+
+    def test_detect_fortinet_from_get_system_status(self):
+        """Detect FortiOS from 'get system status' output."""
+        from sc2.scng.discovery.ssh.collector import detect_vendor_from_output
+        output = (
+            "Version: FortiGate-40F v7.4.11,build2878,260126 (GA.M)\n"
+            "Serial-Number: FGT40FTK2209H7R7\n"
+            "Hostname: fw01\n"
+        )
+        assert detect_vendor_from_output(output) == DeviceVendor.FORTINET
+
+    def test_detect_fortinet_from_fortigate_keyword(self):
+        """Detect FortiOS from fortigate keyword."""
+        from sc2.scng.discovery.ssh.collector import detect_vendor_from_output
+        assert detect_vendor_from_output("FortiGate-100E") == DeviceVendor.FORTINET
+
+    def test_detect_fortinet_from_fortios_keyword(self):
+        """Detect FortiOS from fortios keyword."""
+        from sc2.scng.discovery.ssh.collector import detect_vendor_from_output
+        assert detect_vendor_from_output("FortiOS v7.2.1") == DeviceVendor.FORTINET
+
+
+class TestFortiOSVendorCommands:
+    """Test that FortiOS vendor commands are correctly defined."""
+
+    def test_fortinet_in_vendor_commands(self):
+        """FORTINET should be in VENDOR_COMMANDS."""
+        from sc2.scng.discovery.ssh.collector import VENDOR_COMMANDS
+        assert DeviceVendor.FORTINET in VENDOR_COMMANDS
+
+    def test_fortinet_system_command(self):
+        """FortiOS system command is 'get system status'."""
+        from sc2.scng.discovery.ssh.collector import VENDOR_COMMANDS
+        cmds = VENDOR_COMMANDS[DeviceVendor.FORTINET]
+        assert cmds.system_command == "get system status"
+
+    def test_fortinet_no_lldp_command(self):
+        """FortiGate does not support LLDP neighbor CLI commands."""
+        from sc2.scng.discovery.ssh.collector import VENDOR_COMMANDS
+        cmds = VENDOR_COMMANDS[DeviceVendor.FORTINET]
+        assert cmds.lldp_command is None
+        assert cmds.cdp_command is None
+
+
+class TestFortiOSSysDescrExtraction:
+    """Test _extract_fortios_sysdescr helper."""
+
+    def test_extract_version_line(self):
+        """Extract version from 'get system status' output."""
+        from sc2.scng.discovery.engine import _extract_fortios_sysdescr
+        raw = (
+            "get system status\n"
+            "Version: FortiGate-40F v7.4.11,build2878,260126 (GA.M)\n"
+            "Serial-Number: FGT40FTK2209H7R7\n"
+            "Hostname: fw01\n"
+            "fw01 #\n"
+        )
+        result = _extract_fortios_sysdescr(raw)
+        assert result == "FortiGate-40F v7.4.11"
+
+    def test_extract_strips_build_info(self):
+        """Build number and release tag should be stripped."""
+        from sc2.scng.discovery.engine import _extract_fortios_sysdescr
+        raw = "Version: FortiGate-100E v7.0.12,build1234,250101 (GA)\n"
+        result = _extract_fortios_sysdescr(raw)
+        assert result == "FortiGate-100E v7.0.12"
+        assert "build" not in result
+        assert "GA" not in result
+
+    def test_extract_no_version_line(self):
+        """Fallback when no Version line exists."""
+        from sc2.scng.discovery.engine import _extract_fortios_sysdescr
+        raw = "Some unexpected output\nHostname: fw01\n"
+        result = _extract_fortios_sysdescr(raw)
+        assert "Some unexpected output" in result

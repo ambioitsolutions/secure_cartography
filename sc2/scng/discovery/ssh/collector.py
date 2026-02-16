@@ -70,6 +70,17 @@ VENDOR_COMMANDS: Dict[DeviceVendor, VendorCommands] = {
         system_command="show version | no-more",
         interfaces_command="show interface brief | no-more",
     ),
+    DeviceVendor.FORTINET: VendorCommands(
+        # FortiOS uses 'get system status' instead of 'show version'
+        system_command="get system status",
+        interfaces_command="get system interface",
+        # FortiGate does not support LLDP neighbor reporting via CLI
+        # (LLDP is only available on FortiSwitch-managed interfaces)
+        lldp_command=None,
+        lldp_template=None,
+        cdp_command=None,
+        cdp_template=None,
+    ),
     DeviceVendor.LINUX: VendorCommands(
         lldp_command="lldpcli show neighbors detail",
         lldp_template="linux_lldpcli_show_neighbors_detail",
@@ -90,12 +101,13 @@ def detect_vendor_from_output(output: str) -> DeviceVendor:
     """Detect vendor from CLI output (show version or uname -a)."""
     output_lower = output.lower()
 
+    # Order matters: FORTINET before CISCO because 'FortiOS' contains 'ios'
     patterns = {
+        DeviceVendor.FORTINET: ['fortinet', 'fortigate', 'fortios'],
         DeviceVendor.CISCO: ['cisco', 'ios', 'nx-os', 'asa'],
         DeviceVendor.ARISTA: ['arista', 'eos'],
         DeviceVendor.JUNIPER: ['juniper', 'junos', 'srx', 'qfx'],
         DeviceVendor.PALOALTO: ['palo alto', 'pan-os'],
-        DeviceVendor.FORTINET: ['fortinet', 'fortigate', 'fortios'],
         DeviceVendor.HUAWEI: ['huawei', 'vrp'],
         DeviceVendor.HP: ['hewlett', 'procurve', 'aruba', 'comware'],
         DeviceVendor.MIKROTIK: ['mikrotik', 'routeros'],
@@ -335,6 +347,27 @@ class SSHCollector:
             if debug:
                 print(f"[DEBUG VENDOR] show version exception: {e}")
             logger.debug(f"show version failed: {e}")
+
+        # Fallback to 'get system status' for FortiOS
+        # FortiOS doesn't support 'show version' — it returns a parse error
+        try:
+            if debug:
+                print(f"[DEBUG VENDOR] Sending: get system status")
+            output = client.execute_command("get system status")
+            raw_output['get_system_status'] = output
+            if debug:
+                print(f"[DEBUG VENDOR] get system status returned {len(output)} bytes")
+                print(f"[DEBUG VENDOR] First 300 chars:\n{output[:300]}")
+            vendor = detect_vendor_from_output(output)
+            if vendor != DeviceVendor.UNKNOWN:
+                if debug:
+                    print(f"[DEBUG VENDOR] Detected via get system status: {vendor.value}")
+                logger.debug(f"Detected vendor via get system status: {vendor.value}")
+                return vendor
+        except Exception as e:
+            if debug:
+                print(f"[DEBUG VENDOR] get system status exception: {e}")
+            logger.debug(f"get system status failed: {e}")
 
         # Fallback to uname for Linux/Unix
         try:

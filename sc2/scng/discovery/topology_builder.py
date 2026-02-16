@@ -77,6 +77,21 @@ def extract_platform(sys_descr: Optional[str], vendor: Optional[str] = None) -> 
             return f"{model} RouterOS {version_match.group(1)}"
         return model
 
+    # Fortinet FortiGate pattern
+    # sysDescr from SSH 'get system status': "FortiGate-40F v7.4.11"
+    # sysDescr from SNMP: "FortiGate-40F" or similar
+    if 'FortiGate' in sys_descr or 'Fortinet' in sys_descr or 'fortios' in sys_descr.lower():
+        model = "FortiGate"
+        # Match model number: FortiGate-40F, FortiGate-100E, FortiGate-3200D
+        model_match = re.search(r'FortiGate[- ]?(\w+)', sys_descr)
+        if model_match:
+            model = f"FortiGate {model_match.group(1)}"
+        # Version: "v7.4.11" or "FortiOS v7.4.11" or "FortiOS 7.4.11"
+        version_match = re.search(r'v?(\d+\.\d+\.\d+)', sys_descr)
+        if version_match:
+            return f"{model} FortiOS {version_match.group(1)}"
+        return model
+
     # Pica8 PicOS pattern
     # sysDescr from SNMP: "Pica8 S3410C-16TMS-P PicOS 4.7.1M-EC2"
     # sysDescr from SSH: cleaned show version output (may contain copyright text)
