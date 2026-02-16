@@ -72,7 +72,7 @@ class SSHClientConfig:
     timeout: int = 30
     shell_timeout: float = 5.0
     inter_command_time: float = 1.0
-    expect_prompt_timeout: int = 3000  # ms
+    expect_prompt_timeout: int = 10000  # ms (10s, old devices are slow)
     prompt_count: int = 3
     legacy_mode: bool = False
     debug: bool = False
@@ -453,6 +453,8 @@ class SSHClient:
         Disable pagination by trying common commands.
 
         Fires multiple vendor commands - wrong ones just error harmlessly.
+        After all commands, sends a blank line and waits for prompt to
+        ensure all residual output is flushed (critical for slow devices).
         """
         logger.debug("Disabling pagination (shotgun approach)")
 
@@ -464,8 +466,24 @@ class SSHClient:
             except Exception as e:
                 logger.debug(f"Pagination cmd failed (expected): {cmd} - {e}")
 
-        # Small settle time
+        # Sync: send blank line and wait for prompt to flush residual output.
+        # Old/slow devices (e.g., Cisco C3560) may still be sending error
+        # messages from unrecognized pagination commands.
         time.sleep(0.5)
+        self._drain_output()
+        prompt = self._expect_prompt or self._detected_prompt
+        if prompt:
+            self._shell.send('\n')
+            end_time = time.time() + 5.0
+            while time.time() < end_time:
+                if self._shell.recv_ready():
+                    self._recv_filtered()
+                    # Wait a bit more for trailing output
+                    time.sleep(0.3)
+                    if self._shell.recv_ready():
+                        self._recv_filtered()
+                    break
+                time.sleep(0.1)
         self._drain_output()
 
     def execute_command(
