@@ -746,14 +746,31 @@ GUI remains responsive during discovery due to throttled event architecture.
 
 ---
 
+## Fork Information
+
+This is a modified version of [Secure Cartography](https://github.com/scottpeterman/secure_cartography) by **Scott Peterman** ([@scottpeterman](https://github.com/scottpeterman)).
+
+### Changes from upstream
+
+This fork includes the following modifications (see commit history for details):
+
+- **Security hardening**: PBKDF2 iterations raised to 600K, password complexity enforcement, vault unlock rate limiting, credential access audit logging, SSH host key policy replacing silent AutoAddPolicy
+- **Architecture refactoring**: Split 2183-line security widget into 7-file package, extracted topology builder for independent testability, shared exporter base eliminating duplication
+- **Bug fixes**: Fixed `has_reverse_claim` premature return that disabled bidirectional link validation, fixed `exportexport_png_base64` typo, fixed event throttling dropping `device_started` signals
+- **Code quality**: Engine context manager for executor cleanup, topology file I/O moved to background thread, window lifecycle fixes, NVD sync parallelization
+- **Test suite**: 367 tests covering models, topology builder, vault, encryption, platform parser, exporters, SSH policy, and security constants
+
+---
+
 ## License
 
 This project is licensed under the **GNU General Public License v3.0** - see [LICENSE](LICENSE) for details.
 
+Copyright (C) Scott Peterman (original work)
 
 ---
 
-## Author
+## Original Author
 
 **Scott Peterman** - Network Engineer
 
@@ -766,6 +783,7 @@ This project is licensed under the **GNU General Public License v3.0** - see [LI
 
 ## Acknowledgments
 
+- Original project by [Scott Peterman](https://github.com/scottpeterman/secure_cartography)
 - Network visualization powered by [Cytoscape.js](https://js.cytoscape.org/)
 - SNMP operations via [pysnmp-lextudio](https://github.com/lextudio/pysnmp)
 - SSH via [Paramiko](https://www.paramiko.org/)
