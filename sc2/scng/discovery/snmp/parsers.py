@@ -353,6 +353,10 @@ VENDOR_PATTERNS = {
         r'fortigate',
         r'fortios',
     ],
+    DeviceVendor.MIKROTIK: [
+        r'mikrotik',
+        r'routeros',
+    ],
     DeviceVendor.PICA8: [
         r'pica8',
         r'picos',

@@ -48,6 +48,7 @@ class DeviceVendor(str, Enum):
     FORTINET = "fortinet"
     HUAWEI = "huawei"
     HP = "hp"
+    MIKROTIK = "mikrotik"
     PICA8 = "pica8"
     LINUX = "linux"
     UNKNOWN = "unknown"

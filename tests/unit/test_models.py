@@ -806,3 +806,33 @@ class TestDeviceVendorPica8:
         data = d.to_dict()
         d2 = Device.from_dict(data)
         assert d2.vendor == DeviceVendor.PICA8
+
+
+class TestDeviceVendorMikroTik:
+    """Tests for MIKROTIK vendor enum value."""
+
+    def test_mikrotik_enum_value(self):
+        assert DeviceVendor.MIKROTIK.value == "mikrotik"
+
+    def test_mikrotik_from_string(self):
+        assert DeviceVendor("mikrotik") == DeviceVendor.MIKROTIK
+
+    def test_device_with_mikrotik_vendor(self):
+        d = Device(
+            hostname="mikrotik-switch",
+            ip_address="10.0.0.1",
+            vendor=DeviceVendor.MIKROTIK,
+        )
+        assert d.vendor == DeviceVendor.MIKROTIK
+        data = d.to_dict()
+        assert data["vendor"] == "mikrotik"
+
+    def test_mikrotik_roundtrip(self):
+        d = Device(
+            hostname="mikrotik-switch",
+            ip_address="10.0.0.1",
+            vendor=DeviceVendor.MIKROTIK,
+        )
+        data = d.to_dict()
+        d2 = Device.from_dict(data)
+        assert d2.vendor == DeviceVendor.MIKROTIK

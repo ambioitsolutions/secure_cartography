@@ -531,3 +531,82 @@ class TestTopologyBuilderPicOSCrossLinks:
         assert normalize_interface("ge-1/1/17") == "ge-1/1/17"
         assert normalize_interface("te-1/1/1") == "te-1/1/1"
         assert normalize_interface("ae1") == "ae1"
+
+
+# ---------------------------------------------------------------------------
+# MikroTik extract_platform
+# ---------------------------------------------------------------------------
+
+class TestExtractPlatformMikroTik:
+    """Tests for MikroTik platform extraction."""
+
+    def test_mikrotik_with_model_and_version(self):
+        result = extract_platform(
+            "MikroTik CRS309-1G-8S+ RouterOS 7.22beta6"
+        )
+        assert "MikroTik" in result
+        assert "RouterOS" in result
+        assert "7.22beta6" in result
+
+    def test_routeros_version_only(self):
+        result = extract_platform("RouterOS 7.11.2")
+        assert "MikroTik" in result
+        assert "7.11.2" in result
+
+    def test_mikrotik_vendor_fallback(self):
+        result = extract_platform("MikroTik router")
+        assert "MikroTik" in result
+
+    def test_mikrotik_model_pattern(self):
+        result = extract_platform("MikroTik CRS326-24G-2S+ RouterOS 7.15")
+        assert "CRS326" in result
+
+
+class TestTopologyBuilderMikroTikCrossLinks:
+    """Verify MikroTik cross-links with PicOS and other neighbors."""
+
+    def test_mikrotik_to_picos_bidirectional(self):
+        """MikroTik sfp-sfpplus7 <-> PicOS te-1/1/1"""
+        mikrotik_dev = make_device(
+            "MikroTik", "10.17.70.50",
+            sys_descr="MikroTik RouterOS 7.22beta6",
+            vendor=DeviceVendor.MIKROTIK,
+            neighbors=[
+                make_lldp_neighbor("sfp-sfpplus7", "smf-core01-pica8", "te-1/1/1", None),
+            ],
+        )
+        picos_dev = make_device(
+            "smf-core01-pica8", "10.17.50.5",
+            sys_descr="Pica8 PicOS 4.7.1M",
+            vendor=DeviceVendor.PICA8,
+            neighbors=[
+                make_lldp_neighbor("te-1/1/1", "MikroTik", "sfp-sfpplus7", "10.17.70.50"),
+            ],
+        )
+        topo = TopologyBuilder().build([mikrotik_dev, picos_dev])
+        assert "MikroTik" in topo
+        peers = topo["MikroTik"]["peers"]
+        assert "smf-core01-pica8" in peers
+        conns = peers["smf-core01-pica8"]["connections"]
+        assert len(conns) == 1
+        assert conns[0] == ["sfp-sfpplus7", "te-1/1/1"]
+
+    def test_mikrotik_with_undiscovered_peer(self):
+        """MikroTik sees a neighbor that wasn't discovered."""
+        mikrotik_dev = make_device(
+            "MikroTik", "10.17.70.50",
+            sys_descr="MikroTik RouterOS 7.22",
+            vendor=DeviceVendor.MIKROTIK,
+            neighbors=[
+                make_lldp_neighbor("ether1", "some-switch", "Gi0/1"),
+            ],
+        )
+        topo = TopologyBuilder().build([mikrotik_dev])
+        peers = topo["MikroTik"]["peers"]
+        assert "some-switch" in peers
+
+    def test_mikrotik_interface_normalization(self):
+        """MikroTik sfp-sfpplusX and etherX pass through normalization."""
+        assert normalize_interface("sfp-sfpplus7") == "sfp-sfpplus7"
+        assert normalize_interface("ether1") == "ether1"
+        assert normalize_interface("Portchannel1") == "Portchannel1"

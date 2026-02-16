@@ -552,3 +552,37 @@ class TestPicOSParsing:
         """Pica8 in string but version not matching specific pattern."""
         result = parser.parse("Pica8 switch something")
         assert result.vendor == "Pica8"
+
+
+class TestMikroTikParsing:
+    """Tests for MikroTik RouterOS platform string parsing."""
+
+    @pytest.fixture
+    def parser(self):
+        return PlatformParser()
+
+    def test_mikrotik_routeros_full(self, parser):
+        result = parser.parse("MikroTik RouterOS 7.22beta6")
+        assert result.vendor == "MikroTik"
+        assert result.product == "RouterOS"
+        assert "7.22" in result.version
+        assert result.confidence == "high"
+        assert result.cpe_vendor == "mikrotik"
+        assert result.cpe_product == "routeros"
+
+    def test_routeros_version_only(self, parser):
+        result = parser.parse("RouterOS 7.11.2")
+        assert result.vendor == "MikroTik"
+        assert result.product == "RouterOS"
+        assert "7.11.2" in result.version
+        assert result.confidence == "high"
+
+    def test_mikrotik_cpe_generation(self, parser):
+        result = parser.parse("MikroTik RouterOS 7.15.3")
+        cpe = result.to_cpe()
+        assert cpe.startswith("cpe:2.3:o:mikrotik:routeros:")
+        assert "7.15.3" in cpe
+
+    def test_mikrotik_generic_fallback(self, parser):
+        result = parser.parse("MikroTik switch something")
+        assert result.vendor == "MikroTik"

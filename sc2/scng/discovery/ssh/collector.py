@@ -58,6 +58,12 @@ VENDOR_COMMANDS: Dict[DeviceVendor, VendorCommands] = {
         system_command="show version",
         interfaces_command="show interfaces descriptions",
     ),
+    DeviceVendor.MIKROTIK: VendorCommands(
+        lldp_command="/ip neighbor print detail without-paging",
+        lldp_template="mikrotik_routeros_ip_neighbor_print_detail",
+        system_command="/system resource print",
+        interfaces_command="/interface print",
+    ),
     DeviceVendor.PICA8: VendorCommands(
         lldp_command="show lldp neighbor | no-more",
         lldp_template="pica8_picos_show_lldp_neighbor",
@@ -92,6 +98,7 @@ def detect_vendor_from_output(output: str) -> DeviceVendor:
         DeviceVendor.FORTINET: ['fortinet', 'fortigate', 'fortios'],
         DeviceVendor.HUAWEI: ['huawei', 'vrp'],
         DeviceVendor.HP: ['hewlett', 'procurve', 'aruba', 'comware'],
+        DeviceVendor.MIKROTIK: ['mikrotik', 'routeros'],
         DeviceVendor.PICA8: ['pica8', 'picos'],
         DeviceVendor.LINUX: ['linux', 'ubuntu', 'debian', 'centos', 'red hat', 'rhel', 'fedora', 'rocky', 'gnu/linux'],
     }
