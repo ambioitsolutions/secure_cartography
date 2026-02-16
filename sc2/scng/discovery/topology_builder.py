@@ -146,6 +146,20 @@ class TopologyBuilder:
         def get_canonical_name(device: Device) -> str:
             return device.sys_name or device.hostname or device.ip_address
 
+        def resolve_peer(peer_name: str, peer_ip: Optional[str] = None) -> str:
+            """Resolve a neighbor reference to a canonical device name.
+
+            Checks device_info by peer_name first, then by peer_ip.
+            This handles cases where LLDP advertises a different hostname
+            (e.g., "smf-core-01.yourdo") than the discovered device
+            ("smf-core-01") but the IP matches.
+            """
+            if peer_name in device_info:
+                return get_canonical_name(device_info[peer_name])
+            if peer_ip and peer_ip in device_info:
+                return get_canonical_name(device_info[peer_ip])
+            return peer_name
+
         # Build set of discovered device canonical names
         discovered_devices: Set[str] = set()
         for device in devices:
@@ -176,10 +190,7 @@ class TopologyBuilder:
                     continue
 
                 peer_name = neighbor.remote_device
-                canonical_peer = peer_name
-                if peer_name in device_info:
-                    peer_dev = device_info[peer_name]
-                    canonical_peer = get_canonical_name(peer_dev)
+                canonical_peer = resolve_peer(peer_name, neighbor.remote_ip)
 
                 key = (device_canonical, local_if)
                 if key not in all_claims:
@@ -293,10 +304,7 @@ class TopologyBuilder:
                     continue
 
                 peer_name = neighbor.remote_device
-                canonical_peer = peer_name
-                if peer_name in device_info:
-                    peer_dev = device_info[peer_name]
-                    canonical_peer = get_canonical_name(peer_dev)
+                canonical_peer = resolve_peer(peer_name, neighbor.remote_ip)
 
                 peer_discovered = peer_was_discovered(canonical_peer, peer_name)
 
@@ -316,11 +324,14 @@ class TopologyBuilder:
                     if neighbor.remote_description
                     else None
                 )
-                if peer_name in device_info:
-                    peer_dev = device_info[peer_name]
+                # Look up peer device info by name or IP
+                peer_dev_lookup = device_info.get(peer_name) or (
+                    device_info.get(neighbor.remote_ip) if neighbor.remote_ip else None
+                )
+                if peer_dev_lookup:
                     peer_platform = extract_platform(
-                        peer_dev.sys_descr,
-                        peer_dev.vendor.value if peer_dev.vendor else None,
+                        peer_dev_lookup.sys_descr,
+                        peer_dev_lookup.vendor.value if peer_dev_lookup.vendor else None,
                     )
 
                 if canonical_peer not in peer_connections:

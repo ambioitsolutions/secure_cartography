@@ -456,6 +456,7 @@ class DiscoveryEngine:
             key_content=cred.key_content,
             key_passphrase=cred.key_passphrase,
             timeout=min(cred.timeout_seconds, 10),  # Cap at 10s for testing
+            legacy_mode=True,  # Support old devices (SHA1 KEX, ssh-rsa)
         )
 
         try:
@@ -657,6 +658,7 @@ class DiscoveryEngine:
                 key_content=getattr(ssh_cred, 'key_content', None),
                 key_passphrase=getattr(ssh_cred, 'key_passphrase', None),
                 timeout=getattr(ssh_cred, 'timeout_seconds', 30),
+                legacy_mode=True,  # Support old devices (SHA1 KEX, ssh-rsa)
             )
 
             # Collect in thread pool - pass host and debug flag
@@ -1256,6 +1258,13 @@ class DiscoveryEngine:
                             if self.no_dns and not is_ip_address(next_target):
                                 self.events.neighbor_skipped(
                                     next_target, "no IP (DNS disabled)", device.hostname
+                                )
+                                continue
+
+                            # Skip if neighbor IP was already discovered
+                            if next_ip and next_ip != next_target and not self._try_claim(next_ip):
+                                self.events.neighbor_skipped(
+                                    next_target, "IP already discovered", device.hostname
                                 )
                                 continue
 
