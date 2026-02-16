@@ -15,8 +15,10 @@ For bulk operations, use the transaction context manager.
 """
 
 import json
+import logging
 import base64
 import sqlite3
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Iterator, Union
@@ -31,6 +33,10 @@ from .encryption import (
     VaultEncryption, VaultLocked, InvalidPassword, DecryptionFailed
 )
 from .schema import DatabaseManager
+from sc2.scng.constants import MAX_UNLOCK_ATTEMPTS, UNLOCK_LOCKOUT_SECONDS
+from .audit_log import log_credential_access
+
+logger = logging.getLogger(__name__)
 
 # Type alias for any credential type
 AnyCredential = Union[SSHCredential, SNMPv2cCredential, SNMPv3Credential]
@@ -53,6 +59,11 @@ class CredentialNotFound(VaultError):
 
 class DuplicateCredential(VaultError):
     """Raised when credential name already exists."""
+    pass
+
+
+class VaultLockedOut(VaultError):
+    """Raised when too many failed unlock attempts."""
     pass
 
 
@@ -104,6 +115,10 @@ class CredentialVault:
 
         self._db = DatabaseManager(db_path)
         self._encryption = VaultEncryption()
+
+        # Rate limiting state
+        self._failed_attempts: int = 0
+        self._lockout_until: float = 0.0
 
     @property
     def db_path(self) -> Path:
@@ -163,6 +178,9 @@ class CredentialVault:
         """
         Unlock vault with master password.
 
+        Rate-limited: after MAX_UNLOCK_ATTEMPTS failures, locks out
+        for UNLOCK_LOCKOUT_SECONDS.
+
         Args:
             password: Master password.
 
@@ -171,8 +189,26 @@ class CredentialVault:
 
         Raises:
             VaultNotInitialized: If vault not initialized.
+            VaultLockedOut: If too many failed attempts.
             InvalidPassword: If password incorrect.
         """
+        # Check rate limiting
+        now = time.monotonic()
+        if self._failed_attempts >= MAX_UNLOCK_ATTEMPTS:
+            remaining = self._lockout_until - now
+            if remaining > 0:
+                logger.warning(
+                    "Vault locked out for %.0f more seconds after %d failed attempts",
+                    remaining,
+                    self._failed_attempts,
+                )
+                raise VaultLockedOut(
+                    f"Too many failed attempts. Try again in {int(remaining)} seconds."
+                )
+            # Lockout expired, reset
+            self._failed_attempts = 0
+            self._lockout_until = 0.0
+
         if not self.is_initialized:
             raise VaultNotInitialized("Vault not initialized")
 
@@ -187,7 +223,24 @@ class CredentialVault:
         password_hash = base64.b64decode(hash_b64)
 
         # Unlock encryption
-        self._encryption.unlock(password, salt, password_hash)
+        try:
+            self._encryption.unlock(password, salt, password_hash)
+        except InvalidPassword:
+            self._failed_attempts += 1
+            log_credential_access("unlock", success=False,
+                                  detail=f"attempt {self._failed_attempts}")
+            if self._failed_attempts >= MAX_UNLOCK_ATTEMPTS:
+                self._lockout_until = time.monotonic() + UNLOCK_LOCKOUT_SECONDS
+                logger.warning(
+                    "Vault locked out after %d failed unlock attempts",
+                    self._failed_attempts,
+                )
+            raise
+
+        # Success - reset counter
+        self._failed_attempts = 0
+        self._lockout_until = 0.0
+        log_credential_access("unlock", success=True)
         return True
 
     def lock(self) -> None:
@@ -319,7 +372,7 @@ class CredentialVault:
         # Settings
         settings = {"timeout_seconds": timeout_seconds}
 
-        return self._insert_credential(
+        cred_id = self._insert_credential(
             name=name,
             credential_type=CredentialType.SSH,
             display_username=username,
@@ -331,6 +384,8 @@ class CredentialVault:
             is_default=is_default,
             tags=tags or [],
         )
+        log_credential_access("add", credential_name=name, credential_type="ssh")
+        return cred_id
 
     def get_ssh_credential(
             self,
@@ -366,7 +421,7 @@ class CredentialVault:
         def _strip(val):
             return val.strip() if val else val
 
-        return SSHCredential(
+        cred = SSHCredential(
             username=row['display_username'],
             password=_strip(secrets.get('password')),
             key_content=_strip(secrets.get('key_content')),
@@ -374,6 +429,9 @@ class CredentialVault:
             port=row['port'] or 22,
             timeout_seconds=settings.get('timeout_seconds', 30),
         )
+        log_credential_access("access", credential_name=name or str(credential_id),
+                              credential_type="ssh")
+        return cred
 
     # =========================================================================
     # SNMP v2c Credentials

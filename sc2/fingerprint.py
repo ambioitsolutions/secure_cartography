@@ -344,6 +344,21 @@ def fingerprint_device(ip: str, community: str = 'public', version: str = '2c',
                        timeout: int = 10, verbose: bool = False,
                        skip_arp: bool = False, skip_interfaces: bool = False) -> DeviceFingerprint:
     """Main fingerprinting function"""
+    import ipaddress as _ipaddress
+
+    # Validate IP address
+    try:
+        _ipaddress.ip_address(ip)
+    except ValueError:
+        raise ValueError(f"Invalid IP address: {ip}")
+
+    # Validate SNMP version
+    if version not in ('1', '2c', '3'):
+        raise ValueError(f"Invalid SNMP version: {version}")
+
+    # Validate community string (printable ASCII only)
+    if not community or not all(0x20 <= ord(c) <= 0x7e for c in community):
+        raise ValueError("Community string must contain only printable ASCII characters")
 
     if verbose:
         print(f"\n{'=' * 60}")

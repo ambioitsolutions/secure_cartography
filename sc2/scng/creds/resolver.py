@@ -51,6 +51,25 @@ except ImportError:
     HAS_PYSNMP = False
 
 
+import logging as _logging
+import re as _re
+
+_resolver_logger = _logging.getLogger(__name__)
+
+# Pattern to scrub potential credential fragments from error messages
+_CREDENTIAL_PATTERNS = _re.compile(
+    r'(password|community|passphrase|secret|key|token)\s*[=:]\s*\S+',
+    _re.IGNORECASE,
+)
+
+
+def _sanitize_error(error: Exception) -> str:
+    """Sanitize exception message to prevent credential leakage."""
+    msg = str(error)
+    msg = _CREDENTIAL_PATTERNS.sub(r'\1=<redacted>', msg)
+    return msg
+
+
 class ResolverError(Exception):
     """Base exception for resolver operations."""
     pass
@@ -488,7 +507,8 @@ class CredentialResolver:
 
         try:
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            from sc2.scng.ssh_policy import get_ssh_policy
+            client.set_missing_host_key_policy(get_ssh_policy())
 
             connect_kwargs = {
                 "hostname": host,
@@ -574,7 +594,7 @@ class CredentialResolver:
                 target_port=actual_port,
                 success=False,
                 status=TestResultStatus.AUTH_FAILURE,
-                error_message=str(e),
+                error_message=_sanitize_error(e),
                 started_at=datetime.now(),
                 duration_ms=(time.time() - start_time) * 1000,
             )
@@ -635,7 +655,7 @@ class CredentialResolver:
                 target_port=actual_port,
                 success=False,
                 status=status,
-                error_message=str(e),
+                error_message=_sanitize_error(e),
                 started_at=datetime.now(),
                 duration_ms=(time.time() - start_time) * 1000,
             )
@@ -649,7 +669,7 @@ class CredentialResolver:
                 target_port=actual_port,
                 success=False,
                 status=TestResultStatus.UNKNOWN_ERROR,
-                error_message=str(e),
+                error_message=_sanitize_error(e),
                 started_at=datetime.now(),
                 duration_ms=(time.time() - start_time) * 1000,
             )

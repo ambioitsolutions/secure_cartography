@@ -389,6 +389,8 @@ class AuditCollector:
                     config_path = output_folder / "config.txt"
                     with open(config_path, 'w') as f:
                         f.write(config_output)
+                    import os
+                    os.chmod(config_path, 0o600)
                     config_collected = True
                     config_size = len(config_output)
                     if debug:
@@ -400,6 +402,8 @@ class AuditCollector:
                     inventory_path = output_folder / "inventory.txt"
                     with open(inventory_path, 'w') as f:
                         f.write(inventory_output)
+                    import os
+                    os.chmod(inventory_path, 0o600)
                     inventory_collected = True
                     inventory_size = len(inventory_output)
                     if debug:

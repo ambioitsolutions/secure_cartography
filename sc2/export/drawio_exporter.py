@@ -16,7 +16,6 @@ import math
 import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from xml.dom import minidom
@@ -25,13 +24,7 @@ from sc2.scng.utils.resource_helper import (
     get_resource_dir,
     read_resource_text
 )
-
-
-@dataclass
-class Connection:
-    """Represents a single port-to-port connection."""
-    local_port: str
-    remote_port: str
+from sc2.export.base import Connection, is_endpoint, preprocess_topology, MAC_PATTERN
 
 
 # =============================================================================
@@ -405,7 +398,7 @@ class DrawioExporter:
         self.edge_id_map: Dict[tuple, str] = {}
         self.next_id = 1
 
-        self.mac_pattern = re.compile(r'^([0-9a-f]{4}\.){2}[0-9a-f]{4}$', re.IGNORECASE)
+        self.mac_pattern = MAC_PATTERN
 
     def _reset_state(self) -> None:
         """Reset internal state between exports."""
@@ -421,63 +414,15 @@ class DrawioExporter:
 
     def _is_endpoint(self, node_id: str, platform: str) -> bool:
         """Determine if a node is an endpoint device."""
-        if self.mac_pattern.match(node_id):
-            return True
-
-        platform_lower = platform.lower() if platform else ''
-        endpoint_keywords = {'endpoint', 'camera', 'phone', 'printer', 'pc', 'workstation'}
-        return any(kw in platform_lower for kw in endpoint_keywords)
+        return is_endpoint(node_id, platform)
 
     def _preprocess_topology(self, data: Dict) -> Dict:
         """Normalize topology and apply filters."""
-        # Find all referenced nodes
-        defined = set(data.keys())
-        referenced = set()
-
-        for node_data in data.values():
-            if isinstance(node_data, dict) and 'peers' in node_data:
-                referenced.update(node_data['peers'].keys())
-
-        # Add undefined nodes as endpoints
-        result = data.copy()
-        for node_id in referenced - defined:
-            result[node_id] = {
-                'node_details': {'ip': '', 'platform': 'endpoint'},
-                'peers': {}
-            }
-
-        # Filter endpoints if requested
-        if not self.include_endpoints:
-            endpoints = {
-                nid for nid, ndata in result.items()
-                if self._is_endpoint(nid, ndata.get('node_details', {}).get('platform', ''))
-            }
-
-            filtered = {}
-            for node_id, node_data in result.items():
-                if node_id not in endpoints:
-                    node_copy = node_data.copy()
-                    if 'peers' in node_copy:
-                        node_copy['peers'] = {
-                            pid: pdata for pid, pdata in node_copy['peers'].items()
-                            if pid not in endpoints
-                        }
-                    filtered[node_id] = node_copy
-            result = filtered
-
-        # Filter unconnected nodes if requested
-        if self.connected_only:
-            connected_nodes = set()
-            for node_id, node_data in result.items():
-                if isinstance(node_data, dict):
-                    peers = node_data.get('peers', {})
-                    if peers:
-                        connected_nodes.add(node_id)
-                        connected_nodes.update(peers.keys())
-
-            result = {nid: ndata for nid, ndata in result.items() if nid in connected_nodes}
-
-        return result
+        return preprocess_topology(
+            data,
+            include_endpoints=self.include_endpoints,
+            connected_only=self.connected_only,
+        )
 
     def _create_mxfile(self) -> Tuple[ET.Element, ET.Element]:
         """Create the base mxfile XML structure."""

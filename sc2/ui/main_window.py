@@ -646,6 +646,7 @@ class MainWindow(QMainWindow):
                 theme_manager=self.theme_manager,
                 parent=self
             )
+            self._help_dialog.destroyed.connect(lambda: setattr(self, '_help_dialog', None))
 
         # Ensure theme is current
         self._help_dialog.apply_theme(self.theme_manager.theme)
@@ -660,6 +661,8 @@ class MainWindow(QMainWindow):
                 theme_manager=self.theme_manager,
                 parent=None  # Independent window
             )
+            self._security_window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            self._security_window.destroyed.connect(lambda: setattr(self, '_security_window', None))
             self._security_window.setWindowTitle("Secure Cartography - Security Analysis")
             self._security_window.resize(1200, 800)
             self._security_window.show()
@@ -716,14 +719,32 @@ class MainWindow(QMainWindow):
         )
 
     def _on_test_single(self):
-        """Handle test single button click."""
+        """Handle test single button click - discover a single device without crawl."""
         seeds = self.connection_panel.seeds
         if not seeds:
             self.log_panel.error("No seed IP to test")
             return
 
-        self.log_panel.info(f"Testing connectivity to {seeds[0]}...")
-        # TODO: Run single device test
+        target = seeds[0]
+        self.log_panel.info(f"Testing connectivity to {target}...")
+
+        # Build discovery config for a single device (depth=0, no crawl)
+        output_dir = self.output_panel.output_directory
+        timeout = self.options_panel.timeout
+        verbose = self.options_panel.verbose
+        no_dns = self.options_panel.no_dns
+
+        self.discovery_controller.start_crawl(
+            seeds=[target],
+            max_depth=0,
+            domains=[],
+            exclude_patterns=[],
+            output_dir=output_dir,
+            concurrency=1,
+            timeout=timeout,
+            no_dns=no_dns,
+            verbose=verbose,
+        )
 
     def _on_enhance_map(self):
         """Handle map viewer button click."""
@@ -734,6 +755,7 @@ class MainWindow(QMainWindow):
                 theme_manager=self.theme_manager,
                 parent=self
             )
+            self._map_viewer_dialog.destroyed.connect(lambda: setattr(self, '_map_viewer_dialog', None))
 
         self._map_viewer_dialog.show()
         self._map_viewer_dialog.raise_()

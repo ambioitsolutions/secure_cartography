@@ -48,6 +48,7 @@ Required panel methods:
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -55,8 +56,8 @@ from datetime import datetime
 from PyQt6.QtCore import QObject, pyqtSignal, QThread, Qt
 
 
-# Debug flag
-DEBUG = True
+# Debug flag - controlled by environment variable
+DEBUG = os.environ.get("SC2_DEBUG", "").lower() in ("1", "true", "yes")
 
 
 def debug_print(msg: str):
@@ -96,6 +97,7 @@ class DiscoverySignalBridge(QObject):
         super().__init__(parent)
         self._last_stats_time = 0
         self._last_topology_time = 0
+        self._last_device_started_time = 0
         self._throttle_ms = 250  # Minimum ms between updates
 
     def handle_event(self, event) -> None:
@@ -114,7 +116,7 @@ class DiscoverySignalBridge(QObject):
         event_type = event.event_type.value
 
         # SKIP very noisy events entirely - they're not useful for UI
-        if event_type in ('neighbor_queued', 'device_started'):
+        if event_type == 'neighbor_queued':
             return  # These fire too often, provide little value
 
         # Throttle high-frequency events
@@ -124,6 +126,11 @@ class DiscoverySignalBridge(QObject):
             if current_time - self._last_stats_time < self._throttle_ms:
                 return  # Skip this update
             self._last_stats_time = current_time
+
+        elif event_type == 'device_started':
+            if current_time - self._last_device_started_time < self._throttle_ms:
+                return  # Skip this update
+            self._last_device_started_time = current_time
 
         elif event_type == 'topology_updated':
             # SKIP topology updates entirely during crawl
@@ -157,6 +164,43 @@ class DiscoverySignalBridge(QObject):
                 signal.emit()
             else:
                 signal.emit(data)
+
+
+class TopologyFileWorker(QThread):
+    """
+    Background thread for reading and parsing topology map.json files.
+
+    Prevents the main/UI thread from blocking on potentially large
+    file I/O and JSON parsing operations.
+    """
+
+    topology_loaded = pyqtSignal(dict)   # Emits parsed topology dict
+    load_error = pyqtSignal(str)         # Emits error message string
+
+    def __init__(self, map_file: Path, parent=None):
+        super().__init__(parent)
+        self._map_file = map_file
+
+    def run(self):
+        """Read and parse map.json in background thread."""
+        try:
+            with open(self._map_file, 'r') as f:
+                topology = json.load(f)
+            debug_print(f"  [TopologyFileWorker] Loaded topology with {len(topology)} devices")
+
+            # Log first few devices for debugging
+            for i, (name, data) in enumerate(list(topology.items())[:3]):
+                details = data.get('node_details', {})
+                peers = list(data.get('peers', {}).keys())
+                debug_print(f"    Device {i+1}: {name} ({details.get('platform', '?')}) -> {peers[:3]}")
+
+            self.topology_loaded.emit(topology)
+        except json.JSONDecodeError as e:
+            debug_print(f"  [TopologyFileWorker] JSON decode error: {e}")
+            self.load_error.emit(f"Failed to parse topology: {e}")
+        except Exception as e:
+            debug_print(f"  [TopologyFileWorker] Exception: {e}")
+            self.load_error.emit(f"Failed to load topology: {e}")
 
 
 class DiscoveryWorker(QThread):
@@ -296,6 +340,9 @@ class DiscoveryController(QObject):
         # Worker thread
         self._worker: Optional[DiscoveryWorker] = None
         self._is_running = False
+
+        # Topology file I/O worker (background thread)
+        self._topology_file_worker: Optional[TopologyFileWorker] = None
 
         # Store output directory for topology loading
         self._output_dir: Optional[Path] = None
@@ -596,7 +643,13 @@ class DiscoveryController(QObject):
         self._load_topology_to_preview()
 
     def _load_topology_to_preview(self):
-        """Load the saved topology file into the preview panel."""
+        """
+        Kick off background thread to load the saved topology file.
+
+        File I/O and JSON parsing happen off the main thread to avoid
+        blocking the UI.  When the worker finishes it emits a signal
+        that is handled on the main thread to update the preview panel.
+        """
         debug_print(f"_load_topology_to_preview called")
         debug_print(f"  preview_panel: {self.preview_panel is not None}")
         debug_print(f"  output_dir: {self._output_dir}")
@@ -614,35 +667,52 @@ class DiscoveryController(QObject):
         debug_print(f"  Looking for map file: {map_file}")
         debug_print(f"  File exists: {map_file.exists()}")
 
-        if map_file.exists():
-            try:
-                with open(map_file, 'r') as f:
-                    topology = json.load(f)
-
-                debug_print(f"  Loaded topology with {len(topology)} devices")
-
-                # Log first few devices for debugging
-                for i, (name, data) in enumerate(list(topology.items())[:3]):
-                    details = data.get('node_details', {})
-                    peers = list(data.get('peers', {}).keys())
-                    debug_print(f"    Device {i+1}: {name} ({details.get('platform', '?')}) -> {peers[:3]}")
-
-                self._safe_call(self.log_panel, 'info', f"  Loading topology: {len(topology)} devices")
-
-                # Call update_topology on preview panel
-                debug_print("  Calling preview_panel.update_topology()...")
-                result = self._safe_call(self.preview_panel, 'update_topology', topology)
-                debug_print(f"  update_topology returned: {result}")
-
-            except json.JSONDecodeError as e:
-                debug_print(f"  ERROR: JSON decode error: {e}")
-                self._safe_call(self.log_panel, 'error', f"  Failed to parse topology: {e}")
-            except Exception as e:
-                debug_print(f"  ERROR: Exception: {e}")
-                self._safe_call(self.log_panel, 'error', f"  Failed to load topology: {e}")
-        else:
+        if not map_file.exists():
             debug_print(f"  WARNING: map.json not found!")
             self._safe_call(self.log_panel, 'warning', f"  No map.json found at {map_file}")
+            return
+
+        # Spin up a background thread for file I/O + JSON parsing
+        self._topology_file_worker = TopologyFileWorker(map_file, parent=self)
+        self._topology_file_worker.topology_loaded.connect(
+            self._on_topology_file_loaded
+        )
+        self._topology_file_worker.load_error.connect(
+            self._on_topology_file_error
+        )
+        self._topology_file_worker.start()
+        debug_print("  TopologyFileWorker started")
+
+    def _on_topology_file_loaded(self, topology: Dict[str, Any]):
+        """
+        Handle topology data after background file I/O completes.
+
+        This slot runs on the main thread (via QueuedConnection auto-
+        marshaling from QThread signals) so it is safe to touch the UI.
+        """
+        debug_print(f"  Topology file loaded with {len(topology)} devices")
+
+        self._safe_call(self.log_panel, 'info', f"  Loading topology: {len(topology)} devices")
+
+        # Update the preview panel on the main thread
+        debug_print("  Calling preview_panel.update_topology()...")
+        result = self._safe_call(self.preview_panel, 'update_topology', topology)
+        debug_print(f"  update_topology returned: {result}")
+
+        # Clean up the worker reference
+        self._topology_file_worker = None
+
+    def _on_topology_file_error(self, error_msg: str):
+        """
+        Handle topology file load failure.
+
+        Runs on the main thread so UI calls are safe.
+        """
+        debug_print(f"  Topology file load error: {error_msg}")
+        self._safe_call(self.log_panel, 'error', f"  {error_msg}")
+
+        # Clean up the worker reference
+        self._topology_file_worker = None
 
     def _on_crawl_cancelled(self):
         """Handle crawl cancellation."""

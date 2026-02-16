@@ -82,6 +82,14 @@ from .events import (
     ConsoleEventPrinter, DiscoveryEvent,
 )
 
+# Import extracted topology builder
+from .topology_builder import (
+    TopologyBuilder,
+    normalize_interface,
+    connections_equal,
+    extract_platform,
+)
+
 # Import from scng.creds for vault integration
 # Try multiple import paths to handle different package structures
 HAS_VAULT = False
@@ -146,67 +154,6 @@ def is_mac_address(value: str) -> bool:
     # Standard formats: 00:cc:34:4b:b4:7e or 00-cc-34-4b-b4-7e
     return bool(MAC_PATTERN.match(value))
 
-
-def extract_platform(sys_descr: str, vendor: str = None) -> str:
-    """
-    Extract a concise platform string from sysDescr.
-
-    Examples:
-        "Arista Networks EOS version 4.33.1F running on an Arista vEOS-lab"
-        -> "Arista vEOS-lab EOS 4.33.1F"
-
-        "Cisco IOS Software, IOSv Software (VIOS-ADVENTERPRISEK9-M), Version 15.6(2)T..."
-        -> "Cisco IOSv IOS 15.6(2)T"
-    """
-    if not sys_descr:
-        return "Unknown"
-
-    # Arista pattern
-    if 'Arista' in sys_descr:
-        # Extract model and version
-        model = "Arista"
-        version = ""
-        if 'vEOS-lab' in sys_descr:
-            model = "Arista vEOS-lab"
-        elif 'vEOS' in sys_descr:
-            model = "Arista vEOS"
-        # Extract EOS version
-        eos_match = re.search(r'EOS version (\S+)', sys_descr)
-        if eos_match:
-            version = f"EOS {eos_match.group(1)}"
-        return f"{model} {version}".strip()
-
-    # Cisco IOS pattern
-    if 'Cisco IOS' in sys_descr or 'Cisco' in sys_descr:
-        # Try to extract model info
-        model = "Cisco"
-
-        # Check for specific platforms
-        if 'IOSv' in sys_descr or 'VIOS' in sys_descr:
-            model = "Cisco IOSv"
-        elif 'vios_l2' in sys_descr:
-            model = "Cisco IOS"  # L2 switch
-        elif '7200' in sys_descr:
-            model = "Cisco 7200"
-        elif '7206VXR' in sys_descr:
-            model = "Cisco 7206VXR"
-
-        # Extract IOS version
-        version_match = re.search(r'Version (\S+),', sys_descr)
-        if version_match:
-            return f"{model} IOS {version_match.group(1)}"
-
-        return model
-
-    # Juniper pattern
-    if 'Juniper' in sys_descr or 'JUNOS' in sys_descr:
-        version_match = re.search(r'JUNOS (\S+)', sys_descr)
-        if version_match:
-            return f"Juniper JUNOS {version_match.group(1)}"
-        return "Juniper"
-
-    # Default: return first 50 chars
-    return sys_descr[:50].strip()
 
 
 class DiscoveryEngine:
@@ -296,6 +243,18 @@ class DiscoveryEngine:
 
         # Legacy cache for backward compatibility (IP -> full credential result)
         self._credential_cache: Dict[str, tuple] = {}
+
+    def close(self) -> None:
+        """Shut down the ThreadPoolExecutor and release resources."""
+        self._executor.shutdown(wait=False)
+
+    async def __aenter__(self) -> 'DiscoveryEngine':
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager, ensuring executor cleanup."""
+        self.close()
 
     def _vprint(self, msg: str, level: int = 1):
         """Print verbose message if enabled."""
@@ -1335,7 +1294,9 @@ class DiscoveryEngine:
 
     def _generate_topology_map(self, devices: List[Device]) -> Dict[str, Any]:
         """
-        Generate topology map from discovered devices with bidirectional validation.
+        Generate topology map from discovered devices.
+
+        Delegates to TopologyBuilder for the actual map construction.
 
         Connections are only included if:
         1. Both sides confirm the link (bidirectional), OR
@@ -1355,263 +1316,16 @@ class DiscoveryEngine:
             }
         }
         """
-        # Build lookup for device info by various identifiers
-        device_info: Dict[str, Device] = {}
-        for device in devices:
-            if device.hostname:
-                device_info[device.hostname] = device
-            if device.sys_name and device.sys_name != device.hostname:
-                device_info[device.sys_name] = device
-            if device.ip_address:
-                device_info[device.ip_address] = device
-
-        # Get canonical name for a device
-        def get_canonical_name(device: Device) -> str:
-            return device.sys_name or device.hostname or device.ip_address
-
-        # Build set of discovered device canonical names
-        discovered_devices: Set[str] = set()
-        for device in devices:
-            canonical = get_canonical_name(device)
-            if canonical:
-                discovered_devices.add(canonical)
-                # Also add variations for matching
-                if device.sys_name:
-                    discovered_devices.add(device.sys_name)
-                if device.hostname:
-                    discovered_devices.add(device.hostname)
-
-        # First pass: collect all neighbor claims
-        # Key: (canonical_device, normalized_local_if) -> list of (canonical_peer, normalized_remote_if, neighbor_obj)
-        all_claims: Dict[tuple, List[tuple]] = {}
-
-        for device in devices:
-            device_canonical = get_canonical_name(device)
-            if not device_canonical:
-                continue
-
-            for neighbor in device.neighbors:
-                if not neighbor.remote_device:
-                    continue
-
-                local_if = self._normalize_interface(neighbor.local_interface)
-                remote_if = self._normalize_interface(neighbor.remote_interface)
-
-                if not local_if or not remote_if:
-                    continue
-
-                # Get canonical peer name
-                peer_name = neighbor.remote_device
-                canonical_peer = peer_name
-                if peer_name in device_info:
-                    peer_dev = device_info[peer_name]
-                    canonical_peer = get_canonical_name(peer_dev)
-
-                key = (device_canonical, local_if)
-                if key not in all_claims:
-                    all_claims[key] = []
-                all_claims[key].append((canonical_peer, remote_if, neighbor))
-
-        # Helper to check if reverse claim exists
-        def has_reverse_claim(device_canonical: str, local_if: str,
-                            peer_canonical: str, remote_if: str) -> bool:
-            return True
-
-            """Check if peer claims the reverse connection."""
-            reverse_key = (peer_canonical, remote_if)
-            if reverse_key not in all_claims:
-                return False
-
-            for (claimed_peer, claimed_remote, _) in all_claims[reverse_key]:
-                # Peer should claim connection back to us on our local interface
-                if claimed_peer == device_canonical and claimed_remote == local_if:
-                    return True
-                # Also check if claimed_peer matches any of our identifiers
-                if device_canonical in device_info:
-                    dev = device_info[device_canonical]
-                    if claimed_peer in [dev.hostname, dev.sys_name, dev.ip_address]:
-                        if claimed_remote == local_if:
-                            return True
-            return False
-
-        # Helper to check if peer was discovered
-        def peer_was_discovered(peer_canonical: str, peer_name_original: str) -> bool:
-            """Check if we discovered this peer."""
-            if peer_canonical in discovered_devices:
-                return True
-            if peer_name_original in discovered_devices:
-                return True
-            if peer_name_original in device_info:
-                return True
-            return False
-
-        # Helper to check if peer is a leaf node (discovered but has no neighbors)
-        def peer_is_leaf(peer_canonical: str, peer_name_original: str) -> bool:
-            """Check if peer is a leaf node (no LLDP/CDP capability)."""
-            # Check by canonical name
-            if peer_canonical in device_info:
-                peer_dev = device_info[peer_canonical]
-                if len(peer_dev.neighbors) == 0:
-                    return True
-            # Check by original name
-            if peer_name_original in device_info:
-                peer_dev = device_info[peer_name_original]
-                if len(peer_dev.neighbors) == 0:
-                    return True
-            return False
-
-        # Second pass: build topology with validated connections
-        topology: Dict[str, Any] = {}
-        seen_devices: Set[str] = set()
-
-        for device in devices:
-            canonical_name = get_canonical_name(device)
-            if not canonical_name or canonical_name in seen_devices:
-                continue
-            seen_devices.add(canonical_name)
-
-            node = {
-                "node_details": {
-                    "ip": device.ip_address,
-                    "platform": extract_platform(device.sys_descr,
-                                                 device.vendor.value if device.vendor else None)
-                },
-                "peers": {}
-            }
-
-            # Group validated connections by peer
-            peer_connections: Dict[str, Dict] = {}
-            used_local_interfaces: Set[str] = set()  # Track used interfaces globally for this device
-
-            for neighbor in device.neighbors:
-                if not neighbor.remote_device:
-                    continue
-
-                local_if = self._normalize_interface(neighbor.local_interface)
-                remote_if = self._normalize_interface(neighbor.remote_interface)
-
-                if not local_if or not remote_if:
-                    continue
-
-                # Skip if we've already used this local interface
-                if local_if in used_local_interfaces:
-                    continue
-
-                # Get canonical peer name
-                peer_name = neighbor.remote_device
-                canonical_peer = peer_name
-                if peer_name in device_info:
-                    peer_dev = device_info[peer_name]
-                    canonical_peer = get_canonical_name(peer_dev)
-
-                # Validate connection
-                peer_discovered = peer_was_discovered(canonical_peer, peer_name)
-
-                if peer_discovered:
-                    # Peer was discovered - check if it's a leaf node
-                    is_leaf = peer_is_leaf(canonical_peer, peer_name)
-
-                    if is_leaf:
-                        # Leaf node (no neighbors) - trust unidirectional claim
-                        pass
-                    elif not has_reverse_claim(canonical_name, local_if, canonical_peer, remote_if):
-                        # Not a leaf and no reverse claim - drop
-                        self._vprint(f"Dropping unconfirmed link: {canonical_name}:{local_if} -> {canonical_peer}:{remote_if}", 2)
-                        continue
-                # else: peer not discovered (leaf/edge) - trust unidirectional claim
-
-                # Get peer platform
-                peer_platform = extract_platform(neighbor.remote_description) if neighbor.remote_description else None
-                if peer_name in device_info:
-                    peer_dev = device_info[peer_name]
-                    peer_platform = extract_platform(peer_dev.sys_descr,
-                                                     peer_dev.vendor.value if peer_dev.vendor else None)
-
-                if canonical_peer not in peer_connections:
-                    peer_connections[canonical_peer] = {
-                        "ip": neighbor.remote_ip,
-                        "platform": peer_platform or "Unknown",
-                        "connections": []
-                    }
-
-                # Add validated connection
-                conn = [local_if, remote_if]
-                peer_connections[canonical_peer]["connections"].append(conn)
-                used_local_interfaces.add(local_if)
-
-            node["peers"] = peer_connections
-            topology[canonical_name] = node
-
-        return topology
+        builder = TopologyBuilder()
+        return builder.build(devices)
 
     def _normalize_interface(self, interface: str) -> str:
-        """Normalize interface name for consistent display and deduplication."""
-        if not interface:
-            return ""
-
-        result = interface.strip()
-
-        # === Cisco long-form to short-form ===
-        cisco_replacements = [
-            ("GigabitEthernet", "Gi"),
-            ("TenGigabitEthernet", "Te"),
-            ("TenGigE", "Te"),              # IOS-XR style
-            ("FortyGigabitEthernet", "Fo"),
-            ("FortyGigE", "Fo"),
-            ("HundredGigE", "Hu"),
-            ("HundredGigabitEthernet", "Hu"),
-            ("TwentyFiveGigE", "Twe"),
-            ("FastEthernet", "Fa"),
-            ("Ethernet", "Eth"),            # Must come after longer variants
-        ]
-
-        for long, short in cisco_replacements:
-            if result.startswith(long):
-                result = short + result[len(long):]
-                break
-
-        # === Port-channel normalization (case-insensitive) ===
-        # Port-channel1, Port-Channel1, port-channel1 -> Po1
-        port_channel_match = re.match(r'^[Pp]ort-[Cc]hannel(\d+.*)$', result)
-        if port_channel_match:
-            result = f"Po{port_channel_match.group(1)}"
-
-        # === Vlan normalization ===
-        # Vlan666, VLAN-666, vlan666 -> Vl666
-        vlan_match = re.match(r'^[Vv][Ll][Aa][Nn]-?(\d+.*)$', result)
-        if vlan_match:
-            result = f"Vl{vlan_match.group(1)}"
-
-        # === Null interface normalization ===
-        # Null0 -> Nu0
-        if result.startswith("Null"):
-            result = "Nu" + result[4:]
-
-        # === Loopback normalization ===
-        # Loopback0 -> Lo0
-        if result.startswith("Loopback"):
-            result = "Lo" + result[8:]
-
-        # === Short form normalization ===
-        # Et1/1 -> Eth1/1 (Arista short form in LLDP)
-        result = re.sub(r'^Et(\d)', r'Eth\1', result)
-
-        # === Juniper subinterface normalization ===
-        # xe-0/0/0.0 -> xe-0/0/0 (strip default .0 unit for matching)
-        # But keep .123 or other non-zero units
-        result = re.sub(r'^((?:xe|ge|et|ae|irb|em|me|fxp)-?\d+(?:/\d+)*)\.0$', r'\1', result, flags=re.IGNORECASE)
-
-        return result
+        """Normalize interface name. Delegates to topology_builder module."""
+        return normalize_interface(interface)
 
     def _connections_equal(self, conn1: List[str], conn2: List[str]) -> bool:
-        """Check if two connections are equivalent (same interfaces, normalized)."""
-        if len(conn1) != 2 or len(conn2) != 2:
-            return False
-
-        local1, remote1 = self._normalize_interface(conn1[0]), self._normalize_interface(conn1[1])
-        local2, remote2 = self._normalize_interface(conn2[0]), self._normalize_interface(conn2[1])
-
-        return local1 == local2 and remote1 == remote2
+        """Check if two connections are equivalent. Delegates to topology_builder module."""
+        return connections_equal(conn1, conn2)
 
 
 # Convenience function for single device discovery

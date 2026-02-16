@@ -10,7 +10,7 @@ This module is stateless - the VaultEncryption class holds the derived key
 in memory only while unlocked.
 
 Security notes:
-- Uses PBKDF2-HMAC-SHA256 with 480,000 iterations (OWASP recommendation 2023)
+- Uses PBKDF2-HMAC-SHA256 with 600,000 iterations (OWASP recommendation 2023)
 - Fernet provides AES-128-CBC with HMAC-SHA256 authentication
 - Salt is randomly generated per vault initialization
 - Key material cleared from memory on lock
@@ -19,6 +19,7 @@ Security notes:
 import os
 import hashlib
 import base64
+import re
 import secrets
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -27,9 +28,12 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-# PBKDF2 iterations - OWASP 2023 recommends 600,000 for PBKDF2-HMAC-SHA256
-# Using 480,000 as a balance between security and usability
-PBKDF2_ITERATIONS = 480_000
+from sc2.scng.constants import (
+    PBKDF2_ITERATIONS,
+    PBKDF2_ITERATIONS_LEGACY,
+    MIN_PASSWORD_LENGTH,
+    PASSWORD_COMPLEXITY_REQUIRED_CLASSES,
+)
 
 # Salt size in bytes (128 bits)
 SALT_SIZE = 16
@@ -56,6 +60,40 @@ class InvalidPassword(EncryptionError):
 class DecryptionFailed(EncryptionError):
     """Raised when decryption fails (corrupted or wrong key)."""
     pass
+
+
+def validate_password_strength(password: str) -> None:
+    """
+    Validate master password meets minimum security requirements.
+
+    Requires:
+    - At least MIN_PASSWORD_LENGTH characters (default 12)
+    - At least 3 of 4 character classes (upper, lower, digit, special)
+
+    Raises:
+        ValueError: If password does not meet requirements.
+    """
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(
+            f"Master password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )
+
+    classes = 0
+    if re.search(r'[a-z]', password):
+        classes += 1
+    if re.search(r'[A-Z]', password):
+        classes += 1
+    if re.search(r'[0-9]', password):
+        classes += 1
+    if re.search(r'[^a-zA-Z0-9]', password):
+        classes += 1
+
+    if classes < PASSWORD_COMPLEXITY_REQUIRED_CLASSES:
+        raise ValueError(
+            f"Master password must contain at least "
+            f"{PASSWORD_COMPLEXITY_REQUIRED_CLASSES} of: "
+            f"uppercase, lowercase, digits, special characters"
+        )
 
 
 @dataclass
@@ -126,10 +164,9 @@ class VaultEncryption:
             Tuple of (salt, password_hash) to be stored.
 
         Raises:
-            ValueError: If password too short.
+            ValueError: If password too short or not complex enough.
         """
-        if len(master_password) < 8:
-            raise ValueError("Master password must be at least 8 characters")
+        validate_password_strength(master_password)
 
         # Generate random salt
         salt = secrets.token_bytes(SALT_SIZE)

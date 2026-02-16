@@ -26,12 +26,7 @@ from sc2.scng.utils.resource_helper import (
     iterate_resources,
     resource_exists, read_resource_text
 )
-
-@dataclass
-class Connection:
-    """Represents a single port-to-port connection."""
-    local_port: str
-    remote_port: str
+from sc2.export.base import Connection, is_endpoint, preprocess_topology, MAC_PATTERN
 
 
 @dataclass
@@ -161,7 +156,7 @@ class GraphMLExporter:
         self.default_icons = self.DEFAULT_ICONS.copy()
         self._load_icon_config()
         self.processed_connections: Set[tuple] = set()
-        self.mac_pattern = re.compile(r'^([0-9a-f]{4}\.){2}[0-9a-f]{4}$', re.IGNORECASE)
+        self.mac_pattern = MAC_PATTERN
 
     def _load_icon_config(self):
         """Load icon configuration from JSON if available."""
@@ -278,86 +273,15 @@ class GraphMLExporter:
 
     def _is_endpoint(self, node_id: str, platform: str) -> bool:
         """Determine if a node is an endpoint device."""
-        # MAC address format
-        if self.mac_pattern.match(node_id):
-            return True
-
-        # Platform keywords
-        platform_lower = platform.lower() if platform else ''
-        endpoint_keywords = {'endpoint', 'camera', 'phone', 'printer', 'pc', 'workstation'}
-        if any(kw in platform_lower for kw in endpoint_keywords):
-            return True
-
-        return False
+        return is_endpoint(node_id, platform)
 
     def _preprocess_topology(self, data: Dict) -> Dict:
-        """
-        Normalize topology and add missing nodes.
-
-        - Creates entries for referenced but undefined peers
-        - Optionally filters out endpoints
-        - Optionally filters out standalone (unconnected) nodes
-        """
-        # Find all referenced nodes
-        defined = set(data.keys())
-        referenced = set()
-
-        for node_data in data.values():
-            if isinstance(node_data, dict) and 'peers' in node_data:
-                referenced.update(node_data['peers'].keys())
-
-        # Add undefined nodes
-        result = data.copy()
-        for node_id in referenced - defined:
-            result[node_id] = {
-                'node_details': {'ip': '', 'platform': ''},
-                'peers': {}
-            }
-
-        # Filter endpoints if requested
-        if not self.include_endpoints:
-            endpoints = {
-                nid for nid, ndata in result.items()
-                if self._is_endpoint(nid, ndata.get('node_details', {}).get('platform', ''))
-            }
-
-            filtered = {}
-            for node_id, node_data in result.items():
-                if node_id not in endpoints:
-                    node_copy = node_data.copy()
-                    if 'peers' in node_copy:
-                        node_copy['peers'] = {
-                            pid: pdata for pid, pdata in node_copy['peers'].items()
-                            if pid not in endpoints
-                        }
-                    filtered[node_id] = node_copy
-            result = filtered
-
-        # =============================================================
-        # NEW: Filter standalone nodes if connected_only is True
-        # =============================================================
-        if self.connected_only:
-            # Build set of all nodes that have at least one connection
-            connected_nodes = set()
-
-            for node_id, node_data in result.items():
-                if isinstance(node_data, dict):
-                    peers = node_data.get('peers', {})
-                    if peers:
-                        # This node has outgoing connections
-                        connected_nodes.add(node_id)
-                        # All its peers are also connected
-                        connected_nodes.update(peers.keys())
-
-            # Filter to only connected nodes
-            filtered = {}
-            for node_id, node_data in result.items():
-                if node_id in connected_nodes:
-                    filtered[node_id] = node_data
-
-            result = filtered
-
-        return result
+        """Normalize topology and apply filters."""
+        return preprocess_topology(
+            data,
+            include_endpoints=self.include_endpoints,
+            connected_only=self.connected_only,
+        )
 
     def _calculate_position(self, idx: int, total: int) -> Tuple[float, float]:
         """Calculate node position based on layout type."""

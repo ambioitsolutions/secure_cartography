@@ -1940,6 +1940,26 @@ def apply_widget_style(widget, style_name: str):
 # Module-level exports
 # =============================================================================
 
+def theme_to_viewer_css(theme: ThemeColors) -> Dict[str, str]:
+    """
+    Derive topology viewer CSS variable dict from a ThemeColors instance.
+
+    Returns a dict mapping CSS variable names to color values,
+    suitable for TopologyViewer.set_theme().
+    """
+    return {
+        '--bg-primary': theme.bg_primary,
+        '--bg-surface': theme.bg_secondary,
+        '--text-primary': theme.text_primary,
+        '--text-secondary': theme.text_secondary,
+        '--accent-primary': theme.accent,
+        '--accent-secondary': theme.accent_dim,
+        '--border-color': theme.border_secondary,
+        '--node-border': theme.accent,
+        '--edge-color': theme.accent_info,
+    }
+
+
 __all__ = [
     # Enums
     'ThemeName',
@@ -1958,6 +1978,7 @@ __all__ = [
     'generate_stylesheet',
     'get_themed_stylesheet',
     'apply_widget_style',
+    'theme_to_viewer_css',
 ]
 
 

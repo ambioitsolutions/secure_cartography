@@ -261,36 +261,44 @@ class TopologyViewer(QWidget):
         self._run_js(f"TopologyViewer.loadTopologyB64('{b64_data}')")
 
     def _enrich_topology_with_icons(self, data: Dict) -> Dict:
-        """Add icon URLs to topology data."""
-        # Deep copy to avoid modifying original
-        import copy
-        data = copy.deepcopy(data)
+        """Add icon URLs to topology data.
 
+        Uses shallow copies of affected dicts to avoid mutating the caller's data
+        without the cost of a full deepcopy.
+        """
         # Handle different formats
         if 'cytoscape' in data:
-            # VelocityMaps format
-            nodes = data['cytoscape'].get('nodes', [])
-            for node in nodes:
-                node_data = node.get('data', node)
-                platform = node_data.get('platform', '')
-                node_data['icon'] = self._icon_manager.get_icon_url(platform)
+            # VelocityMaps format - shallow copy nodes list and node dicts
+            cyto = {**data['cytoscape']}
+            nodes = [
+                {**node, 'data': {**node.get('data', {}), 'icon': self._icon_manager.get_icon_url(node.get('data', {}).get('platform', ''))}}
+                for node in cyto.get('nodes', [])
+            ]
+            cyto['nodes'] = nodes
+            return {**data, 'cytoscape': cyto}
 
         elif 'nodes' in data:
             # Direct Cytoscape format
-            for node in data['nodes']:
-                node_data = node.get('data', node)
-                platform = node_data.get('platform', '')
-                node_data['icon'] = self._icon_manager.get_icon_url(platform)
+            nodes = [
+                {**node, 'data': {**node.get('data', {}), 'icon': self._icon_manager.get_icon_url(node.get('data', {}).get('platform', ''))}}
+                for node in data['nodes']
+            ]
+            return {**data, 'nodes': nodes}
 
         else:
-            # SC2 map format - add icons to node_details
+            # SC2 map format - shallow copy device dicts and node_details
+            enriched = {}
             for device_name, device_data in data.items():
                 if isinstance(device_data, dict):
                     details = device_data.get('node_details', {})
                     platform = details.get('platform', '')
-                    details['icon'] = self._icon_manager.get_icon_url(platform)
-
-        return data
+                    enriched[device_name] = {
+                        **device_data,
+                        'node_details': {**details, 'icon': self._icon_manager.get_icon_url(platform)},
+                    }
+                else:
+                    enriched[device_name] = device_data
+            return enriched
 
     # -------------------------------------------------------------------------
     # Public API
@@ -459,7 +467,7 @@ class TopologyViewer(QWidget):
         escaped = json_str.replace('\\', '\\\\').replace("'", "\\'")
         self._run_js(f"TopologyViewer.restorePositions('{escaped}')")
 
-    def exportexport_png_base64(self) -> Optional[str]:
+    def export_png_base64(self) -> Optional[str]:
         """
         Export current view as PNG.
 
@@ -517,41 +525,40 @@ class TopologyViewer(QWidget):
 # Convenience: Themed presets for SC2
 # =============================================================================
 
-SC2_THEMES = {
-    'cyber': {
-        '--bg-primary': '#0a0a1a',
-        '--bg-surface': '#12122a',
-        '--text-primary': '#e0e0e0',
-        '--text-secondary': '#888888',
-        '--accent-primary': '#00d4ff',
-        '--accent-secondary': '#7b2cbf',
-        '--border-color': '#2a2a4a',
-        '--node-border': '#00d4ff',
-        '--edge-color': '#4a9eff'
-    },
-    'dark': {
-        '--bg-primary': '#1a1a1a',
-        '--bg-surface': '#252525',
-        '--text-primary': '#e0e0e0',
-        '--text-secondary': '#888888',
-        '--accent-primary': '#ffc107',
-        '--accent-secondary': '#ff9800',
-        '--border-color': '#3a3a3a',
-        '--node-border': '#ffc107',
-        '--edge-color': '#ffa000'
-    },
-    'light': {
-        '--bg-primary': '#f5f5f5',
-        '--bg-surface': '#ffffff',
-        '--text-primary': '#212121',
-        '--text-secondary': '#666666',
-        '--accent-primary': '#1976d2',
-        '--accent-secondary': '#0d47a1',
-        '--border-color': '#e0e0e0',
-        '--node-border': '#1976d2',
-        '--edge-color': '#2196f3'
+def _get_sc2_themes() -> Dict[str, Dict[str, str]]:
+    """Build viewer theme dicts from the canonical ThemeColors definitions."""
+    from sc2.ui.themes import THEMES, ThemeName, theme_to_viewer_css
+    return {
+        name.value: theme_to_viewer_css(theme)
+        for name, theme in THEMES.items()
     }
-}
+
+# Lazy-loaded so import-time failures don't break the module
+SC2_THEMES: Dict[str, Dict[str, str]] = {}
+
+
+def get_sc2_themes() -> Dict[str, Dict[str, str]]:
+    """Get viewer CSS theme dicts, lazily derived from themes.py."""
+    global SC2_THEMES
+    if not SC2_THEMES:
+        try:
+            SC2_THEMES.update(_get_sc2_themes())
+        except Exception:
+            # Fallback if themes.py unavailable (e.g., standalone testing)
+            SC2_THEMES.update({
+                'cyber': {
+                    '--bg-primary': '#0a0a1a',
+                    '--bg-surface': '#12122a',
+                    '--text-primary': '#e0e0e0',
+                    '--text-secondary': '#888888',
+                    '--accent-primary': '#00d4ff',
+                    '--accent-secondary': '#7b2cbf',
+                    '--border-color': '#2a2a4a',
+                    '--node-border': '#00d4ff',
+                    '--edge-color': '#4a9eff',
+                },
+            })
+    return SC2_THEMES
 
 
 # =============================================================================
@@ -646,10 +653,11 @@ if __name__ == '__main__':
             self.addToolBar(toolbar)
 
             # Theme actions
-            for theme_name in SC2_THEMES.keys():
+            themes = get_sc2_themes()
+            for theme_name in themes.keys():
                 action = QAction(f"Theme: {theme_name.title()}", self)
                 action.triggered.connect(
-                    lambda checked, t=theme_name: self.viewer.set_theme(SC2_THEMES[t])
+                    lambda checked, t=theme_name: self.viewer.set_theme(get_sc2_themes()[t])
                 )
                 toolbar.addAction(action)
 
@@ -676,7 +684,7 @@ if __name__ == '__main__':
 
         def on_viewer_ready(self):
             print("[Demo] Viewer ready, loading sample topology...")
-            self.viewer.set_theme(SC2_THEMES['cyber'])
+            self.viewer.set_theme(get_sc2_themes()['cyber'])
             self.viewer.load_topology(SAMPLE_TOPOLOGY)
 
     app = QApplication(sys.argv)

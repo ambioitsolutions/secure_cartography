@@ -161,7 +161,8 @@ class SSHClient:
         logger.debug(f"Connecting to {self.config.host}:{self.config.port}")
 
         self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        from sc2.scng.ssh_policy import get_ssh_policy
+        self._client.set_missing_host_key_policy(get_ssh_policy())
 
         # Apply legacy algorithm support
         if self.config.legacy_mode:
