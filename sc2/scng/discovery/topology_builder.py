@@ -176,21 +176,51 @@ class TopologyBuilder:
                     all_claims[key] = []
                 all_claims[key].append((canonical_peer, remote_if, neighbor))
 
+        def _device_names(canonical: str) -> Set[str]:
+            """Get all known names for a device."""
+            names = {canonical}
+            if canonical in device_info:
+                dev = device_info[canonical]
+                for n in [dev.hostname, dev.sys_name, dev.ip_address]:
+                    if n:
+                        names.add(n)
+            return names
+
         def has_reverse_claim(device_canonical: str, local_if: str,
                               peer_canonical: str, remote_if: str) -> bool:
-            """Check if peer claims the reverse connection."""
-            reverse_key = (peer_canonical, remote_if)
-            if reverse_key not in all_claims:
-                return False
+            """Check if peer claims the reverse connection.
 
-            for (claimed_peer, claimed_remote, _) in all_claims[reverse_key]:
-                if claimed_peer == device_canonical and claimed_remote == local_if:
-                    return True
-                if device_canonical in device_info:
-                    dev = device_info[device_canonical]
-                    if claimed_peer in [dev.hostname, dev.sys_name, dev.ip_address]:
-                        if claimed_remote == local_if:
-                            return True
+            First tries exact interface match (peer:remote_if -> device:local_if).
+            Falls back to device-level match: peer has ANY claim back to device
+            on the same local interface. This handles LLDP port_id mismatches
+            (e.g., Pica8 advertising description-style port IDs like
+            "MikroTik sfpplus7 (ae2)" instead of "te-1/1/1").
+            """
+            device_names = _device_names(device_canonical)
+
+            # Exact match: peer's remote_if claims back to device's local_if
+            reverse_key = (peer_canonical, remote_if)
+            if reverse_key in all_claims:
+                for (claimed_peer, claimed_remote, _) in all_claims[reverse_key]:
+                    if claimed_peer in device_names and claimed_remote == local_if:
+                        return True
+
+            # Fallback: peer has ANY interface claiming a link back to device
+            # This handles LLDP port_id/description mismatches between vendors
+            peer_names = _device_names(peer_canonical)
+            for (claim_device, claim_if), claims in all_claims.items():
+                if claim_device not in peer_names:
+                    continue
+                for (claimed_peer, claimed_remote, _) in claims:
+                    if claimed_peer in device_names:
+                        logger.debug(
+                            "Accepted link %s:%s -> %s:%s via device-level match "
+                            "(peer claims %s:%s -> %s:%s)",
+                            device_canonical, local_if, peer_canonical, remote_if,
+                            claim_device, claim_if, claimed_peer, claimed_remote,
+                        )
+                        return True
+
             return False
 
         def peer_was_discovered(peer_canonical: str, peer_name_original: str) -> bool:

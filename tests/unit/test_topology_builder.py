@@ -610,3 +610,121 @@ class TestTopologyBuilderMikroTikCrossLinks:
         assert normalize_interface("sfp-sfpplus7") == "sfp-sfpplus7"
         assert normalize_interface("ether1") == "ether1"
         assert normalize_interface("Portchannel1") == "Portchannel1"
+
+
+# ===========================================================================
+# Device-level bidirectional fallback tests
+# ===========================================================================
+
+class TestBidirectionalFallback:
+    """Test that device-level fallback handles LLDP port_id mismatches."""
+
+    def test_mismatched_port_ids_still_link(self):
+        """When LLDP port_id doesn't match actual interface name, device-level
+        fallback should still connect the devices.
+
+        Real scenario: Pica8 advertises port description "MikroTik sfpplus7 (ae2)"
+        as port_id, but actual interface is te-1/1/1."""
+        pica8 = make_device(
+            "pica8-sw", "10.0.0.1",
+            vendor=DeviceVendor.PICA8,
+            neighbors=[
+                make_lldp_neighbor("te-1/1/1", "MikroTik", "sfp-sfpplus7"),
+            ],
+        )
+        mikrotik = make_device(
+            "MikroTik", "10.0.0.2",
+            vendor=DeviceVendor.MIKROTIK,
+            neighbors=[
+                # MikroTik sees Pica8's port_id as description, not interface name
+                make_lldp_neighbor("sfp-sfpplus7", "pica8-sw", "MikroTik sfpplus7 (ae2)"),
+            ],
+        )
+        topo = TopologyBuilder().build([pica8, mikrotik])
+
+        # Pica8 should have MikroTik as a peer (link not dropped)
+        assert "MikroTik" in topo["pica8-sw"]["peers"]
+        conns = topo["pica8-sw"]["peers"]["MikroTik"]["connections"]
+        assert len(conns) >= 1
+
+    def test_exact_match_still_preferred(self):
+        """Exact bidirectional match still works as before."""
+        switch_a = make_device(
+            "sw-a", "10.0.0.1",
+            neighbors=[
+                make_lldp_neighbor("Gi0/1", "sw-b", "Gi0/2"),
+            ],
+        )
+        switch_b = make_device(
+            "sw-b", "10.0.0.2",
+            neighbors=[
+                make_lldp_neighbor("Gi0/2", "sw-a", "Gi0/1"),
+            ],
+        )
+        topo = TopologyBuilder().build([switch_a, switch_b])
+        assert "sw-b" in topo["sw-a"]["peers"]
+        assert ["Gi0/1", "Gi0/2"] in topo["sw-a"]["peers"]["sw-b"]["connections"]
+
+    def test_no_reverse_claim_drops_link(self):
+        """Without any reverse claim, link should still be dropped."""
+        switch_a = make_device(
+            "sw-a", "10.0.0.1",
+            neighbors=[
+                make_lldp_neighbor("Gi0/1", "sw-b", "Gi0/2"),
+            ],
+        )
+        # sw-b discovered but claims NO neighbors
+        switch_b = make_device(
+            "sw-b", "10.0.0.2",
+            neighbors=[
+                make_lldp_neighbor("Gi0/3", "sw-c", "Gi0/4"),  # Claims to sw-c, not sw-a
+            ],
+        )
+        topo = TopologyBuilder().build([switch_a, switch_b])
+        # sw-a→sw-b: sw-b doesn't claim any link back to sw-a → dropped
+        assert "sw-b" not in topo["sw-a"]["peers"]
+
+    def test_multiple_links_mismatched_port_ids(self):
+        """Multiple links between devices with mismatched port IDs."""
+        pica8 = make_device(
+            "pica8-sw", "10.0.0.1",
+            vendor=DeviceVendor.PICA8,
+            neighbors=[
+                make_lldp_neighbor("te-1/1/1", "MikroTik", "sfp-sfpplus7"),
+                make_lldp_neighbor("te-1/1/2", "MikroTik", "sfp-sfpplus8"),
+            ],
+        )
+        mikrotik = make_device(
+            "MikroTik", "10.0.0.2",
+            vendor=DeviceVendor.MIKROTIK,
+            neighbors=[
+                make_lldp_neighbor("sfp-sfpplus7", "pica8-sw", "MikroTik sfpplus7 (ae2)"),
+                make_lldp_neighbor("sfp-sfpplus8", "pica8-sw", "MikroTik sfpplus8 (ae2)"),
+            ],
+        )
+        topo = TopologyBuilder().build([pica8, mikrotik])
+        assert "MikroTik" in topo["pica8-sw"]["peers"]
+        conns = topo["pica8-sw"]["peers"]["MikroTik"]["connections"]
+        assert len(conns) == 2
+
+
+# ===========================================================================
+# SSH sys_descr cleanup tests
+# ===========================================================================
+
+class TestExtractPlatformSSHCleanup:
+    """Test that extract_platform handles cleaned SSH output."""
+
+    def test_pica8_cleaned_version(self):
+        """Cleaned PicOS version output should produce correct platform."""
+        # After our fix strips the echo, sys_descr should look like this:
+        cleaned = "Copyright                     : Copyright (C) 2009-2026 Pica8, Inc."
+        result = extract_platform(cleaned)
+        assert "Pica8" in result
+
+    def test_pica8_with_model_and_version(self):
+        """PicOS with model info in sys_descr."""
+        result = extract_platform("Pica8 S3410C-16TMS-P PicOS 4.7.1M-EC2")
+        assert "Pica8" in result
+        assert "PicOS" in result
+        assert "4.7.1" in result

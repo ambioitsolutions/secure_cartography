@@ -680,7 +680,29 @@ class DiscoveryEngine:
 
                 # Get version info from raw output if available
                 if ssh_result.raw_output.get('show_version'):
-                    device.sys_descr = ssh_result.raw_output['show_version'][:200]
+                    raw_version = ssh_result.raw_output['show_version']
+                    # Strip SSH command echo (first line contains prompt + command)
+                    # e.g., "jjohnson@host> show version\r\nActual output..."
+                    lines = raw_version.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+                    # Drop leading blank lines and the command echo line
+                    cleaned = []
+                    for line in lines:
+                        stripped = line.strip()
+                        # Skip empty lines at the start
+                        if not cleaned and not stripped:
+                            continue
+                        # Skip the command echo (contains the command name)
+                        if not cleaned and ('show version' in stripped.lower()
+                                            or 'show system' in stripped.lower()
+                                            or '/system resource' in stripped.lower()):
+                            continue
+                        # Skip trailing prompt lines
+                        if stripped.endswith(('>', '#', '$', ']')):
+                            last_word = stripped.split()[-1] if stripped.split() else ''
+                            if '@' in last_word or last_word in ('>', '#', '$'):
+                                continue
+                        cleaned.append(line)
+                    device.sys_descr = '\n'.join(cleaned).strip()[:200]
 
                 # Process neighbors - normalize their hostnames too
                 for neighbor in ssh_result.neighbors:
@@ -1228,6 +1250,13 @@ class DiscoveryEngine:
                                 next_target = next_ip or next_target
 
                             if not next_target:
+                                continue
+
+                            # In no-dns mode, skip non-IP targets (they'll just fail)
+                            if self.no_dns and not is_ip_address(next_target):
+                                self.events.neighbor_skipped(
+                                    next_target, "no IP (DNS disabled)", device.hostname
+                                )
                                 continue
 
                             # Atomically claim the target
