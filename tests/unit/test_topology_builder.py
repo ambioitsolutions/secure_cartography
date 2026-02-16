@@ -449,3 +449,85 @@ class TestTopologyBuilder:
         assert len(result["sw1"]["peers"]) == 2
         assert len(result["sw2"]["peers"]) == 2
         assert len(result["sw3"]["peers"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# PicOS extract_platform
+# ---------------------------------------------------------------------------
+
+class TestExtractPlatformPicOS:
+    """Tests for PicOS platform extraction."""
+
+    def test_pica8_with_model_and_version(self):
+        result = extract_platform(
+            "Pica8 S3410C-16TMS-P PicOS 4.7.1M"
+        )
+        assert "Pica8" in result
+        assert "PicOS" in result
+        assert "4.7.1M" in result
+
+    def test_picos_version_only(self):
+        result = extract_platform("PicOS 4.7.1M-EC2")
+        assert "Pica8" in result
+        assert "4.7.1M-EC2" in result
+
+    def test_pica8_vendor_fallback(self):
+        result = extract_platform("Pica8 switch")
+        assert "Pica8" in result
+
+    def test_picos_lowercase(self):
+        result = extract_platform("picos version 3.2.1")
+        assert "Pica8" in result
+
+
+class TestTopologyBuilderPicOSCrossLinks:
+    """Verify PicOS cross-links with Cisco and FortiGate neighbors."""
+
+    def test_picos_to_cisco_bidirectional(self):
+        """PicOS switch ge-1/1/17 <-> Cisco Gi0/9"""
+        picos_dev = make_device(
+            "smf-core01-pica8", "10.17.50.5",
+            sys_descr="Pica8 PicOS 4.7.1M",
+            vendor=DeviceVendor.PICA8,
+            neighbors=[
+                make_lldp_neighbor("ge-1/1/17", "smf-core-01", "Gi0/9", "10.17.109.5"),
+            ],
+        )
+        cisco_dev = make_device(
+            "smf-core-01", "10.17.109.5",
+            sys_descr="Cisco IOS Software, Version 15.2(4)M",
+            vendor=DeviceVendor.CISCO,
+            neighbors=[
+                make_lldp_neighbor("Gi0/9", "smf-core01-pica8", "ge-1/1/17", "10.17.50.5"),
+            ],
+        )
+        topo = TopologyBuilder().build([picos_dev, cisco_dev])
+        assert "smf-core01-pica8" in topo
+        peers = topo["smf-core01-pica8"]["peers"]
+        assert "smf-core-01" in peers
+        conns = peers["smf-core-01"]["connections"]
+        assert len(conns) == 1
+        assert conns[0] == ["ge-1/1/17", "Gi0/9"]
+
+    def test_picos_with_undiscovered_fortinet_peer(self):
+        """PicOS switch sees FortiGate neighbor that wasn't discovered."""
+        picos_dev = make_device(
+            "smf-core01-pica8", "10.17.50.5",
+            sys_descr="Pica8 PicOS 4.7.1M",
+            vendor=DeviceVendor.PICA8,
+            neighbors=[
+                make_lldp_neighbor("ge-1/1/9", "fw01", "lan2"),
+                make_lldp_neighbor("ge-1/1/10", "fw01", "lan3"),
+            ],
+        )
+        topo = TopologyBuilder().build([picos_dev])
+        peers = topo["smf-core01-pica8"]["peers"]
+        assert "fw01" in peers
+        conns = peers["fw01"]["connections"]
+        assert len(conns) == 2
+
+    def test_picos_interface_normalization(self):
+        """PicOS ge-1/1/X and te-1/1/X interfaces pass through normalization."""
+        assert normalize_interface("ge-1/1/17") == "ge-1/1/17"
+        assert normalize_interface("te-1/1/1") == "te-1/1/1"
+        assert normalize_interface("ae1") == "ae1"

@@ -125,6 +125,12 @@ class PlatformParser:
         (r"(?:MikroTik\s+)?RouterOS\s+(\d+\.\d+[A-Za-z0-9\.]*)",
          "MikroTik", "RouterOS", "mikrotik", "routeros", 1),
 
+        # Pica8 PicOS
+        (r"Pica8\s+(?:\S+\s+)?PicOS\s+(\d+\.\d+\.\d+[A-Za-z0-9\-\.]*)",
+         "Pica8", "PicOS", "pica8", "picos", 1),
+        (r"PicOS\s+(\d+\.\d+\.\d+[A-Za-z0-9\-\.]*)",
+         "Pica8", "PicOS", "pica8", "picos", 1),
+
         # Ubiquiti
         (r"Ubiquiti.*EdgeOS\s+[vV]?(\d+\.\d+\.\d+)",
          "Ubiquiti", "EdgeOS", "ubiquiti", "edgeos", 1),
@@ -215,7 +221,7 @@ class PlatformParser:
 
         vendor = ""
         for keyword in ["Cisco", "Juniper", "Arista", "Palo Alto", "Fortinet",
-                        "F5", "HPE", "Dell", "Brocade", "Extreme", "MikroTik"]:
+                        "F5", "HPE", "Dell", "Brocade", "Extreme", "MikroTik", "Pica8"]:
             if keyword.lower() in platform_string.lower():
                 vendor = keyword
                 break

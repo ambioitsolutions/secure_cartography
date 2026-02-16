@@ -353,6 +353,10 @@ VENDOR_PATTERNS = {
         r'fortigate',
         r'fortios',
     ],
+    DeviceVendor.PICA8: [
+        r'pica8',
+        r'picos',
+    ],
 }
 
 

@@ -776,3 +776,33 @@ class TestDiscoveryResult:
         parsed = json.loads(json_str)
         assert parsed["total_attempted"] == 1
         assert len(parsed["devices"]) == 1
+
+
+class TestDeviceVendorPica8:
+    """Tests for PICA8 vendor enum value."""
+
+    def test_pica8_enum_value(self):
+        assert DeviceVendor.PICA8.value == "pica8"
+
+    def test_pica8_from_string(self):
+        assert DeviceVendor("pica8") == DeviceVendor.PICA8
+
+    def test_device_with_pica8_vendor(self):
+        d = Device(
+            hostname="pica8-switch",
+            ip_address="10.0.0.1",
+            vendor=DeviceVendor.PICA8,
+        )
+        assert d.vendor == DeviceVendor.PICA8
+        data = d.to_dict()
+        assert data["vendor"] == "pica8"
+
+    def test_pica8_roundtrip(self):
+        d = Device(
+            hostname="pica8-switch",
+            ip_address="10.0.0.1",
+            vendor=DeviceVendor.PICA8,
+        )
+        data = d.to_dict()
+        d2 = Device.from_dict(data)
+        assert d2.vendor == DeviceVendor.PICA8

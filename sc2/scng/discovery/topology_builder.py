@@ -64,6 +64,19 @@ def extract_platform(sys_descr: Optional[str], vendor: Optional[str] = None) -> 
             return f"Juniper JUNOS {version_match.group(1)}"
         return "Juniper"
 
+    # Pica8 PicOS pattern
+    if 'Pica8' in sys_descr or 'PicOS' in sys_descr or 'picos' in sys_descr.lower():
+        model = "Pica8"
+        model_match = re.search(r'(\S*\d+\S*-\S+)', sys_descr)
+        if model_match:
+            model = f"Pica8 {model_match.group(1)}"
+        version_match = re.search(r'PicOS\s+(\S+)', sys_descr, re.IGNORECASE)
+        if not version_match:
+            version_match = re.search(r'(\d+\.\d+\.\d+\S*)', sys_descr)
+        if version_match:
+            return f"{model} PicOS {version_match.group(1)}"
+        return model
+
     # Default: return first 50 chars
     return sys_descr[:50].strip()
 

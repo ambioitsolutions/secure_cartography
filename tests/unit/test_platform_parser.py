@@ -517,3 +517,38 @@ class TestParseToCpeRoundTrip:
     def test_generic_fallback_cpe_empty(self):
         result = self.parser.parse("Unknown thing 1.2.3")
         assert result.to_cpe() == ""
+
+
+class TestPicOSParsing:
+    """Tests for PicOS/Pica8 platform string parsing."""
+
+    @pytest.fixture
+    def parser(self):
+        return PlatformParser()
+
+    def test_pica8_full_platform(self, parser):
+        result = parser.parse("Pica8 S3410C-16TMS-P PicOS 4.7.1M")
+        assert result.vendor == "Pica8"
+        assert result.product == "PicOS"
+        assert result.version == "4.7.1M"
+        assert result.confidence == "high"
+        assert result.cpe_vendor == "pica8"
+        assert result.cpe_product == "picos"
+
+    def test_picos_version_only(self, parser):
+        result = parser.parse("PicOS 4.7.1M-EC2")
+        assert result.vendor == "Pica8"
+        assert result.product == "PicOS"
+        assert "4.7.1" in result.version
+        assert result.confidence == "high"
+
+    def test_pica8_cpe_generation(self, parser):
+        result = parser.parse("Pica8 S3410C-16TMS-P PicOS 4.7.1M")
+        cpe = result.to_cpe()
+        assert cpe.startswith("cpe:2.3:o:pica8:picos:")
+        assert "4.7.1m" in cpe
+
+    def test_pica8_generic_fallback(self, parser):
+        """Pica8 in string but version not matching specific pattern."""
+        result = parser.parse("Pica8 switch something")
+        assert result.vendor == "Pica8"

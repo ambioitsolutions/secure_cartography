@@ -55,6 +55,7 @@ PAGINATION_DISABLE_SHOTGUN = [
     'terminal more disable',       # Extreme VOSS
     'no page',                     # HP ProCurve
     'set cli pager off',           # Palo Alto
+    'no-more',                     # Pica8 PicOS (sets no-paging mode)
 ]
 
 
@@ -510,7 +511,11 @@ class SSHClient:
         return output_buffer.getvalue()
 
     def _wait_for_prompt(self, timeout: float) -> str:
-        """Wait for prompt to appear in output."""
+        """Wait for prompt to appear at end of output.
+
+        Uses endswith() rather than 'in' to avoid matching the
+        command echo line (which also contains the prompt string).
+        """
         prompt = self._expect_prompt or self._detected_prompt
 
         if not prompt:
@@ -526,8 +531,10 @@ class SSHClient:
                 chunk = self._recv_filtered()
                 output += chunk
 
-                if prompt in output:
-                    logger.debug("Prompt detected in output")
+                # Check that the prompt appears at the END of output,
+                # not just in the command echo line
+                if output.rstrip().endswith(prompt):
+                    logger.debug("Prompt detected at end of output")
                     return output
 
             time.sleep(0.01)
