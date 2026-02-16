@@ -335,7 +335,17 @@ const TopologyViewer = {
                     'text-background-padding': '2px',
                     'text-background-shape': 'roundrectangle',
                     'text-rotation': 'autorotate',
-                    'text-margin-y': -8
+                    'text-margin-y': -8,
+                    'text-wrap': 'wrap',
+                    'text-max-width': '200px'
+                }
+            },
+            {
+                // Multi-link edges (LACP, port-channel) get thicker lines
+                selector: 'edge[connectionCount > 1]',
+                style: {
+                    'width': 4,
+                    'line-style': 'solid'
                 }
             },
             {
@@ -639,15 +649,23 @@ const TopologyViewer = {
                 if (!addedEdges.has(edgeId)) {
                     addedEdges.add(edgeId);
 
-                    let label = '';
                     const connections = peerData.connections || [];
-                    if (connections.length > 0 && connections[0].length >= 2) {
-                        label = `${connections[0][0]} ↔ ${connections[0][1]}`;
-                    }
+                    // Build label showing ALL connections (LACP members, etc.)
+                    const labels = connections
+                        .filter(c => c.length >= 2)
+                        .map(c => `${c[0]} ↔ ${c[1]}`);
+                    const label = labels.join('\n');
 
                     elements.push({
                         group: 'edges',
-                        data: { id: edgeId, source: deviceName, target: peerName, label: label }
+                        data: {
+                            id: edgeId,
+                            source: deviceName,
+                            target: peerName,
+                            label: label,
+                            connectionCount: connections.length,
+                            connections: connections
+                        }
                     });
                 }
             }
@@ -919,10 +937,23 @@ const TopologyViewer = {
     showEdgeInfo(data) {
         const panel = document.getElementById('info-panel');
         const content = document.getElementById('info-content');
+        const connections = data.connections || [];
+        const count = data.connectionCount || connections.length || 1;
+        let connectionsHtml = '';
+        if (connections.length > 0) {
+            connectionsHtml = connections
+                .filter(c => c.length >= 2)
+                .map(c => `<div class="info-item" style="margin-left:8px">${c[0]} ↔ ${c[1]}</div>`)
+                .join('');
+        } else {
+            connectionsHtml = `<div class="info-item" style="margin-left:8px">${data.label || 'N/A'}</div>`;
+        }
         content.innerHTML = `
             <div class="info-item"><strong>Source:</strong> ${data.source}</div>
             <div class="info-item"><strong>Target:</strong> ${data.target}</div>
-            <div class="info-item"><strong>Interfaces:</strong> ${data.label || 'N/A'}</div>
+            <div class="info-item"><strong>Links:</strong> ${count}</div>
+            <div class="info-item"><strong>Interfaces:</strong></div>
+            ${connectionsHtml}
         `;
         panel.querySelector('h4').textContent = 'Connection Information';
         panel.classList.add('active');

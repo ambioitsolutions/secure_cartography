@@ -870,3 +870,39 @@ class TestFortiOSSysDescrExtraction:
         raw = "Some unexpected output\nHostname: fw01\n"
         result = _extract_fortios_sysdescr(raw)
         assert "Some unexpected output" in result
+
+
+class TestCleanSSHSysDescr:
+    """Test _clean_ssh_sysdescr helper for garbage filtering."""
+
+    def test_filters_bare_ip_address(self):
+        """Bare IP like (208.67.220.220) should be filtered out."""
+        from sc2.scng.discovery.engine import _clean_ssh_sysdescr
+        raw = "show version\n(208.67.220.220)\nCisco IOS Software, C3560\n"
+        result = _clean_ssh_sysdescr(raw)
+        assert "208.67.220.220" not in result
+        assert "Cisco IOS" in result
+
+    def test_filters_command_error(self):
+        """Command error lines should be filtered."""
+        from sc2.scng.discovery.engine import _clean_ssh_sysdescr
+        raw = "show version\ncommand parse error before 'version'\nCommand fail.\n"
+        result = _clean_ssh_sysdescr(raw)
+        assert "command parse error" not in result
+        assert "Command fail" not in result
+
+    def test_preserves_valid_cisco_output(self):
+        """Valid Cisco show version should be preserved."""
+        from sc2.scng.discovery.engine import _clean_ssh_sysdescr
+        raw = "show version\nCisco IOS Software, C3560 Software (C3560-IPSERVICESK9-M), Version 15.0(2)SE\n"
+        result = _clean_ssh_sysdescr(raw)
+        assert "Cisco IOS" in result
+        assert "15.0(2)SE" in result
+
+    def test_strips_command_echo(self):
+        """Command echo line should be stripped."""
+        from sc2.scng.discovery.engine import _clean_ssh_sysdescr
+        raw = "smf-core-01#show version\nCisco IOS Software\nsmf-core-01#"
+        result = _clean_ssh_sysdescr(raw)
+        assert "Cisco IOS" in result
+        assert "smf-core-01#show" not in result
