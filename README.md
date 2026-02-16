@@ -26,7 +26,7 @@ Version 2 is a complete rewrite with a modernized architecture:
 | CLI | Basic                        | **Full-featured with test/discover/crawl commands**                    |
 | Progress Reporting | Callbacks                    | **Structured events for GUI integration**                              |
 | SNMP Support | None                         | **v2c and v3 (authPriv)**                                              |
-| Vendor Support | Cisco, Arista                | **+ Cisco, Arista and Juniper, Others fingerprinted based on sysdesc** |
+| Vendor Support | Cisco, Arista                | **Cisco, Arista, Juniper, Pica8 PicOS, MikroTik, Fortinet, Palo Alto, HP** |
 | GUI | PyQt6                        | **PyQt6 with theme support (Cyber/Dark/Light)**                        |
 | Topology Viewer | External (yEd/Draw.io)       | **Embedded Cytoscape.js with vendor coloring, yEd & Draw.io export**   |
 | Security Analysis | None                         | **CVE vulnerability scanning via NIST NVD**                            |
@@ -59,7 +59,7 @@ Version 2 is a complete rewrite with a modernized architecture:
 - **Local CVE cache** - SQLite cache avoids repeated API calls
 - **Export reports** - CSV export with affected devices per CVE
 - **Device-centric view** - "Export by Device" shows CVE counts per device
-- **Multi-vendor support** - Cisco IOS/IOS-XE/NX-OS, Arista EOS, Juniper JUNOS, Palo Alto, Fortinet
+- **Multi-vendor support** - Cisco IOS/IOS-XE/NX-OS, Arista EOS, Juniper JUNOS, Palo Alto, Fortinet, Pica8 PicOS, MikroTik RouterOS
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/scottpeterman/secure_cartography/refs/heads/main/screenshots/sec_vuln.png" alt="Security Analysis - CVE Vulnerability Scanning" width="800">
@@ -68,7 +68,7 @@ Version 2 is a complete rewrite with a modernized architecture:
 ### Live Topology Preview
 - **Embedded Cytoscape.js viewer** - interactive network visualization
 - **Real-time rendering** - topology displayed immediately after discovery
-- **Vendor-specific styling** - Cisco (blue), Arista (green), Juniper (orange) with distinct colors
+- **Vendor-specific styling** - Cisco (blue), Arista (green), Juniper (orange), MikroTik, Pica8, and more with distinct colors
 - **Undiscovered peer nodes** - referenced but unreachable devices shown with warning markers
 - **Theme-aware** - visualization adapts to Cyber/Dark/Light themes
 - **Interactive controls** - fit view, auto-layout, node selection with details popup
@@ -77,7 +77,7 @@ Version 2 is a complete rewrite with a modernized architecture:
 One-click export to Draw.io format for professional network documentation:
 
 - **Cisco mxgraph stencils** - native Draw.io shapes for switches, routers, firewalls, wireless
-- **Vendor coloring** - automatic fill colors match the embedded viewer (Cisco blue, Juniper orange, Arista green)
+- **Vendor coloring** - automatic fill colors match the embedded viewer (Cisco, Juniper, Arista, MikroTik, Pica8, and more)
 - **Hierarchical layout** - tree algorithm positions devices by network tier
 - **Interface labels** - port-to-port connections preserved on edges
 - **Universal compatibility** - open in Draw.io desktop, web (diagrams.net), or VS Code extension
@@ -116,8 +116,14 @@ Poll individual devices directly from the Map Viewer for on-demand identificatio
 | Cisco NX-OS | ✓ | ✓ | ✓ |
 | Arista EOS | ✓ | ✓ | ✓ |
 | Juniper JUNOS | ✓ | ✓ | ✓ |
+| Pica8 PicOS | ✓ | ✓ | ✓ |
+| MikroTik RouterOS | ✓ | ✓ | ✓ |
+| Palo Alto PAN-OS | ✓ | - | ✓ |
+| Fortinet FortiOS | ✓ | - | ✓ |
+| HP/Aruba | ✓ | - | ✓ |
+| Linux (lldpd) | - | ✓ | - |
 
-* Others will likely appear but testing has been limited
+*Additional vendors are fingerprinted from sysDescr and will appear in topology maps.*
 ---
 
 ## Screenshots
@@ -171,7 +177,7 @@ Poll individual devices directly from the Map Viewer for on-demand identificatio
 
 ### From Source
 ```bash
-git clone https://github.com/scottpeterman/secure_cartography.git
+git clone https://github.com/ambioitsolutions/secure_cartography.git
 cd secure_cartography
 pip install -e .
 ```
@@ -250,8 +256,10 @@ The Security Analysis module transforms your network inventory into an actionabl
 Secure Cartography automatically parses platform strings into CPE (Common Platform Enumeration) format:
 
 ```
-"Cisco IOS IOS 15.2(4.0.55)E" → cpe:2.3:o:cisco:ios:15.2(4.0.55)e:*:*:*:*:*:*:*
-"Arista vEOS-lab EOS 4.33.1F" → cpe:2.3:o:arista:eos:4.33.1f:*:*:*:*:*:*:*
+"Cisco IOS IOS 15.2(4.0.55)E"       → cpe:2.3:o:cisco:ios:15.2(4.0.55)e:*:*:*:*:*:*:*
+"Arista vEOS-lab EOS 4.33.1F"       → cpe:2.3:o:arista:eos:4.33.1f:*:*:*:*:*:*:*
+"Pica8 S3410C-16TMS-P PicOS 4.7.1M" → cpe:2.3:o:pica8:picos:4.7.1m:*:*:*:*:*:*:*
+"MikroTik RouterOS 7.15.3"          → cpe:2.3:o:mikrotik:routeros:7.15.3:*:*:*:*:*:*:*
 ```
 
 ### CVE Lookup
@@ -290,15 +298,17 @@ sc2/
 │   │
 │   ├── discovery/             # Discovery engine
 │   │   ├── engine.py          # Async orchestration, crawl logic
+│   │   ├── topology_builder.py # Bidirectional link validation
 │   │   ├── models.py          # Device, Neighbor, Interface
 │   │   ├── cli.py             # Discovery CLI
 │   │   │
 │   │   ├── snmp/              # SNMP collection
 │   │   │   ├── walker.py      # Async GETBULK table walks
+│   │   │   ├── parsers.py     # Vendor detection, value decoding
 │   │   │   └── collectors/    # system, interfaces, lldp, cdp, arp
 │   │   │
 │   │   └── ssh/               # SSH fallback
-│   │       ├── client.py      # Paramiko wrapper
+│   │       ├── client.py      # Paramiko wrapper (multi-vendor)
 │   │       ├── collector.py   # Vendor detection, command execution
 │   │       └── parsers.py     # TextFSM integration
 │   │
@@ -332,7 +342,12 @@ sc2/
         ├── topology_viewer.py     # QWebEngineView + Cytoscape.js bridge
         ├── topology_viewer.html   # Cytoscape.js visualization
         ├── map_viewer_dialog.py   # Full-screen topology viewer
-        ├── security_widget.py     # CVE vulnerability analysis
+        ├── security/              # CVE vulnerability analysis (7-file package)
+        │   ├── platform_parser.py # Vendor/product/version extraction
+        │   ├── cve_cache.py       # NVD API client with SQLite cache
+        │   ├── models.py          # Table models and delegates
+        │   ├── workers.py         # Background sync worker
+        │   └── dialogs.py         # CVE detail and help dialogs
         ├── tag_input.py           # Tag/chip input widget
         ├── toggle_switch.py       # iOS-style toggle
         └── stat_box.py            # Counter display boxes
@@ -346,7 +361,7 @@ The embedded topology viewer uses [Cytoscape.js](https://js.cytoscape.org/) for 
 
 ### Features
 - **Automatic layout** - Dagre algorithm for hierarchical network arrangement
-- **Vendor coloring** - Platform-specific border and fill colors (Cisco blue, Juniper orange, Arista green)
+- **Vendor coloring** - Platform-specific border and fill colors (Cisco blue, Juniper orange, Arista green, MikroTik, Pica8, and more)
 - **Undiscovered nodes** - Peers referenced but not crawled shown with dashed borders and ⚠ markers
 - **Edge labels** - Interface pairs displayed on connections
 - **Click inspection** - Select nodes to view device details
@@ -652,13 +667,15 @@ See [README_Style_Guide.md](README_Style_Guide.md) for widget styling details.
 ## Development Status
 
 ### ✅ Complete
-- Credential vault with encryption
+- Credential vault with encryption (AES-256-GCM, PBKDF2 600K iterations)
 - SNMP discovery (v2c, v3)
-- SSH fallback discovery
+- SSH fallback discovery with multi-vendor support
+- Pica8 PicOS LLDP discovery (live-tested)
+- MikroTik RouterOS neighbor discovery (live-tested)
 - Async crawl engine with progress events
 - CLI for creds and discovery
 - Theme system (Cyber/Dark/Light)
-- Login dialog with vault unlock
+- Login dialog with vault unlock (rate-limited)
 - Main window layout with all panels
 - Custom themed widgets
 - Discovery↔UI integration with throttled events
@@ -672,6 +689,7 @@ See [README_Style_Guide.md](README_Style_Guide.md) for widget styling details.
 - Interactive device polling (local + proxy modes)
 - Device fingerprinting via Rapid7 Recog patterns
 - OUI vendor lookup for MAC addresses
+- 397-test unit test suite
 
 ### 📋 Planned
 - Map enhancement tools (manual node positioning, annotations)
@@ -754,11 +772,14 @@ This is a modified version of [Secure Cartography](https://github.com/scottpeter
 
 This fork includes the following modifications (see commit history for details):
 
+- **Pica8 PicOS support**: Full SSH discovery with custom TextFSM template for `show lldp neighbor`, vendor detection via SNMP sysDescr and SSH `show version`, platform parsing for CPE/CVE matching. Live-tested against Pica8 S3410C-16TMS-P running PicOS 4.7.1M.
+- **MikroTik RouterOS support**: Full SSH discovery with custom TextFSM template for `/ip neighbor print detail`, vendor auto-detection, platform parsing for CPE/CVE matching. Live-tested against MikroTik CRS309-1G-8S+ running RouterOS 7.22.
+- **SSH prompt detection fix**: Changed `_wait_for_prompt` to use `endswith()` instead of `in` to avoid false-matching on command echo lines. Fixes discovery on devices with user@hostname> style prompts (Juniper, PicOS).
 - **Security hardening**: PBKDF2 iterations raised to 600K, password complexity enforcement, vault unlock rate limiting, credential access audit logging, SSH host key policy replacing silent AutoAddPolicy
 - **Architecture refactoring**: Split 2183-line security widget into 7-file package, extracted topology builder for independent testability, shared exporter base eliminating duplication
 - **Bug fixes**: Fixed `has_reverse_claim` premature return that disabled bidirectional link validation, fixed `exportexport_png_base64` typo, fixed event throttling dropping `device_started` signals
 - **Code quality**: Engine context manager for executor cleanup, topology file I/O moved to background thread, window lifecycle fixes, NVD sync parallelization
-- **Test suite**: 367 tests covering models, topology builder, vault, encryption, platform parser, exporters, SSH policy, and security constants
+- **Test suite**: 397 tests covering models, topology builder, vault, encryption, platform parser, exporters, SSH policy, security constants, and PicOS/MikroTik vendor support
 
 ---
 
