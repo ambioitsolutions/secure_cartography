@@ -561,6 +561,13 @@ class TestExtractPlatformMikroTik:
         result = extract_platform("MikroTik CRS326-24G-2S+ RouterOS 7.15")
         assert "CRS326" in result
 
+    def test_mikrotik_real_snmp_sysdescr(self):
+        """Real sysDescr from MikroTik CRS309: model should not appear twice."""
+        result = extract_platform("RouterOS CRS309-1G-8S+ 7.22beta6 (testing)")
+        assert result.count("CRS309") == 1
+        assert "7.22beta6" in result
+        assert "RouterOS" in result
+
 
 class TestTopologyBuilderMikroTikCrossLinks:
     """Verify MikroTik cross-links with PicOS and other neighbors."""
@@ -721,6 +728,8 @@ class TestExtractPlatformSSHCleanup:
         cleaned = "Copyright                     : Copyright (C) 2009-2026 Pica8, Inc."
         result = extract_platform(cleaned)
         assert "Pica8" in result
+        # Copyright year range should NOT appear as model
+        assert "2009-2026" not in result
 
     def test_pica8_with_model_and_version(self):
         """PicOS with model info in sys_descr."""
@@ -728,3 +737,16 @@ class TestExtractPlatformSSHCleanup:
         assert "Pica8" in result
         assert "PicOS" in result
         assert "4.7.1" in result
+        assert "S3410C" in result
+
+    def test_pica8_version_strips_build_hash(self):
+        """Build hash suffix should be stripped from version."""
+        result = extract_platform(
+            "Copyright (C) 2009-2026 Pica8, Inc.\n"
+            "Model                         : S3410C-16TMS-P\n"
+            "Software Version              : PicOS 4.7.1M-EC2/858d9863c8"
+        )
+        assert "Pica8" in result
+        assert "4.7.1M-EC2" in result
+        assert "858d9863c8" not in result
+        assert "2009-2026" not in result

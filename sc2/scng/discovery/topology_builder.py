@@ -65,29 +65,39 @@ def extract_platform(sys_descr: Optional[str], vendor: Optional[str] = None) -> 
         return "Juniper"
 
     # MikroTik RouterOS pattern
+    # sysDescr format: "RouterOS CRS309-1G-8S+ 7.22beta6 (testing)"
     if 'MikroTik' in sys_descr or 'RouterOS' in sys_descr or 'routeros' in sys_descr.lower():
         model = "MikroTik"
         model_match = re.search(r'(C[A-Z]+\d+\S*)', sys_descr)
         if model_match:
             model = f"MikroTik {model_match.group(1)}"
-        version_match = re.search(r'RouterOS\s+(\S+)', sys_descr, re.IGNORECASE)
-        if not version_match:
-            version_match = re.search(r'(\d+\.\d+[A-Za-z0-9\.]*)', sys_descr)
+        # Version is the numeric part (e.g., "7.22beta6", "7.11.2"), not the model
+        version_match = re.search(r'(\d+\.\d+(?:\.\d+)?(?:beta|rc|alpha)?\d*)', sys_descr)
         if version_match:
             return f"{model} RouterOS {version_match.group(1)}"
         return model
 
     # Pica8 PicOS pattern
+    # sysDescr from SNMP: "Pica8 S3410C-16TMS-P PicOS 4.7.1M-EC2"
+    # sysDescr from SSH: cleaned show version output (may contain copyright text)
     if 'Pica8' in sys_descr or 'PicOS' in sys_descr or 'picos' in sys_descr.lower():
         model = "Pica8"
-        model_match = re.search(r'(\S*\d+\S*-\S+)', sys_descr)
+        # Match Pica8 hardware models (letter+digit patterns like S3410C-16TMS-P)
+        model_match = re.search(r'([A-Z]\w*\d+\w*-\w+)', sys_descr)
         if model_match:
-            model = f"Pica8 {model_match.group(1)}"
-        version_match = re.search(r'PicOS\s+(\S+)', sys_descr, re.IGNORECASE)
+            candidate = model_match.group(1)
+            # Exclude copyright year ranges like "2009-2026"
+            if not re.match(r'^\d{4}-\d{4}$', candidate):
+                model = f"Pica8 {candidate}"
+        # PicOS version (e.g., 4.7.1M-EC2) — but strip build hash suffixes
+        version_match = re.search(r'(?:PicOS|PICOS)\s+(\d+\.\d+\.\d+\S*)', sys_descr, re.IGNORECASE)
         if not version_match:
-            version_match = re.search(r'(\d+\.\d+\.\d+\S*)', sys_descr)
+            version_match = re.search(r'(\d+\.\d+\.\d+[A-Za-z0-9\-]*)', sys_descr)
         if version_match:
-            return f"{model} PicOS {version_match.group(1)}"
+            version = version_match.group(1)
+            # Strip trailing build hash (e.g., "4.7.1M-EC2/858d9863c8" -> "4.7.1M-EC2")
+            version = re.sub(r'/[0-9a-f]{6,}$', '', version)
+            return f"{model} PicOS {version}"
         return model
 
     # Default: return first 50 chars
