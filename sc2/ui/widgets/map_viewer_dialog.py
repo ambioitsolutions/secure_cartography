@@ -376,7 +376,7 @@ class MapViewerDialog(QDialog):
 
         self._export_combo = QComboBox()
         self._export_combo.setObjectName("exportCombo")
-        self._export_combo.setFixedWidth(100)
+        self._export_combo.setFixedWidth(120)
         self._export_combo.addItem("PNG", "png")
         self._export_combo.addItem("SVG", "svg")
         self._export_combo.addItem("yEd", "graphml")
@@ -1423,7 +1423,39 @@ class MapViewerDialog(QDialog):
                 selection-background-color: {theme.accent};
                 color: {theme.text_primary};
             }}
-            
+
+            QComboBox#exportCombo {{
+                background-color: {theme.bg_tertiary};
+                border: 1px solid {theme.border_dim};
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: {theme.text_primary};
+                min-height: 24px;
+            }}
+
+            QComboBox#exportCombo:hover {{
+                border-color: {theme.accent};
+            }}
+
+            QComboBox#exportCombo::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+
+            QComboBox#exportCombo::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid {theme.text_secondary};
+            }}
+
+            QComboBox#exportCombo QAbstractItemView {{
+                background-color: {theme.bg_secondary};
+                border: 1px solid {theme.border_dim};
+                selection-background-color: {theme.accent};
+                color: {theme.text_primary};
+            }}
+
             QCheckBox#connectedOnlyCheckbox, QCheckBox#showLeavesCheckbox {{
                 color: {theme.text_primary};
                 spacing: 6px;

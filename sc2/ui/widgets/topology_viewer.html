@@ -327,17 +327,22 @@ const TopologyViewer = {
                     'width': 2,
                     'line-color': edgeColor,
                     'curve-style': 'bezier',
-                    'label': 'data(label)',
+                    'source-label': 'data(sourceLabel)',
+                    'target-label': 'data(targetLabel)',
+                    'source-text-offset': 40,
+                    'target-text-offset': 40,
+                    'source-text-rotation': 'autorotate',
+                    'target-text-rotation': 'autorotate',
+                    'source-text-margin-y': -8,
+                    'target-text-margin-y': -8,
                     'font-size': '8px',
                     'color': textColor,
                     'text-background-color': bgColor,
                     'text-background-opacity': 0.9,
                     'text-background-padding': '2px',
                     'text-background-shape': 'roundrectangle',
-                    'text-rotation': 'autorotate',
-                    'text-margin-y': -8,
                     'text-wrap': 'wrap',
-                    'text-max-width': '200px'
+                    'text-max-width': '150px'
                 }
             },
             {
@@ -588,7 +593,8 @@ const TopologyViewer = {
                         id: edgeData.id || `${edgeData.source}-${edgeData.target}`,
                         source: edgeData.source,
                         target: edgeData.target,
-                        label: edgeData.label || ''
+                        sourceLabel: edgeData.sourceLabel || edgeData.label || '',
+                        targetLabel: edgeData.targetLabel || ''
                     }
                 });
             });
@@ -650,11 +656,13 @@ const TopologyViewer = {
                     addedEdges.add(edgeId);
 
                     const connections = peerData.connections || [];
-                    // Build label showing ALL connections (LACP members, etc.)
-                    const labels = connections
+                    // Build split labels: source iface near source node, target iface near target node
+                    const sourceLabels = connections
                         .filter(c => c.length >= 2)
-                        .map(c => `${c[0]} ↔ ${c[1]}`);
-                    const label = labels.join('\n');
+                        .map(c => c[0]);
+                    const targetLabels = connections
+                        .filter(c => c.length >= 2)
+                        .map(c => c[1]);
 
                     elements.push({
                         group: 'edges',
@@ -662,7 +670,8 @@ const TopologyViewer = {
                             id: edgeId,
                             source: deviceName,
                             target: peerName,
-                            label: label,
+                            sourceLabel: sourceLabels.join('\n'),
+                            targetLabel: targetLabels.join('\n'),
                             connectionCount: connections.length,
                             connections: connections
                         }
@@ -946,7 +955,8 @@ const TopologyViewer = {
                 .map(c => `<div class="info-item" style="margin-left:8px">${c[0]} ↔ ${c[1]}</div>`)
                 .join('');
         } else {
-            connectionsHtml = `<div class="info-item" style="margin-left:8px">${data.label || 'N/A'}</div>`;
+            const fallback = [data.sourceLabel, data.targetLabel].filter(Boolean).join(' ↔ ') || 'N/A';
+            connectionsHtml = `<div class="info-item" style="margin-left:8px">${fallback}</div>`;
         }
         content.innerHTML = `
             <div class="info-item"><strong>Source:</strong> ${data.source}</div>
