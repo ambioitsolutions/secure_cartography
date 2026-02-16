@@ -378,6 +378,7 @@ class MapViewerDialog(QDialog):
         self._export_combo.setObjectName("exportCombo")
         self._export_combo.setFixedWidth(100)
         self._export_combo.addItem("PNG", "png")
+        self._export_combo.addItem("SVG", "svg")
         self._export_combo.addItem("yEd", "graphml")
         self._export_combo.addItem("Draw.io", "drawio")
         self._export_combo.addItem("CSV", "csv")
@@ -501,6 +502,8 @@ class MapViewerDialog(QDialog):
 
         if export_type == "png":
             self._on_export_png()
+        elif export_type == "svg":
+            self._on_export_svg()
         elif export_type == "graphml":
             self._on_export_graphml()
         elif export_type == "drawio":
@@ -1003,6 +1006,38 @@ class MapViewerDialog(QDialog):
 
         self._viewer._run_js("TopologyViewer.exportPNG()", on_png_ready)
 
+    def _on_export_svg(self):
+        """Export topology as SVG."""
+        if not self._viewer_ready or not self._topology_data:
+            QMessageBox.warning(self, "Export", "No topology loaded to export.")
+            return
+
+        default_name = self._current_file.stem + ".svg" if self._current_file else "topology.svg"
+        start_dir = str(self._current_file.parent / default_name) if self._current_file else default_name
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Topology as SVG",
+            start_dir,
+            "SVG Images (*.svg)"
+        )
+
+        if not path:
+            return
+
+        def on_svg_ready(svg_data):
+            if not svg_data:
+                QMessageBox.warning(self, "Export Failed", "Failed to generate SVG.")
+                return
+
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(svg_data)
+                self._status_label.setText(f"Exported: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.warning(self, "Export Failed", f"Error saving file: {e}")
+
+        self._viewer._run_js("TopologyViewer.exportSVG()", on_svg_ready)
 
     def _on_export_drawio(self):
         """Export topology to Draw.io format with Cisco stencils and vendor coloring."""

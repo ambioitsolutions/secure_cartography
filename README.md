@@ -689,13 +689,14 @@ See [README_Style_Guide.md](README_Style_Guide.md) for widget styling details.
 - Interactive device polling (local + proxy modes)
 - Device fingerprinting via Rapid7 Recog patterns
 - OUI vendor lookup for MAC addresses
-- 397-test unit test suite
+- Node editing (double-click to edit label, IP, platform, notes)
+- Settings persistence across sessions
+- Export topology as PNG
+- Export topology as SVG
+- 438-test unit test suite
 
 ### 📋 Planned
 - Map enhancement tools (manual node positioning, annotations)
-- Credential auto-discovery integration
-- Settings persistence
-- Export topology as PNG/SVG
 - Topology diff (compare discoveries)
 
 ---

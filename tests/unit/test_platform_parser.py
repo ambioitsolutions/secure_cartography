@@ -15,7 +15,9 @@ import pytest
 # platform_parser.py is pure stdlib, but its package path traverses sc2.ui
 # which eagerly imports PyQt6.  Inject lightweight mocks so the import chain
 # succeeds in headless / CI environments where PyQt6 is not installed.
-if "PyQt6" not in sys.modules:
+try:
+    import PyQt6  # noqa: F401
+except ImportError:
     _qt = MagicMock()
     for _mod in (
         "PyQt6", "PyQt6.QtCore", "PyQt6.QtGui", "PyQt6.QtWidgets",

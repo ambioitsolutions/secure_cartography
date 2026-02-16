@@ -1022,6 +1022,12 @@ const TopologyViewer = {
     return this.cy.png({ output: 'base64', bg: bg, full: true, scale: 2 });
 },
 
+    exportSVG() {
+    if (!this.cy) return null;
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim() || '#1a1a2e';
+    return this.cy.svg({ full: true, bg: bg });
+},
+
 getSelectedNodes() {
     if (!this.cy) return '[]';
     return JSON.stringify(this.cy.nodes(':selected').map(n => n.id()));

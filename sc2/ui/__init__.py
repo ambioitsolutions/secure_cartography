@@ -94,20 +94,9 @@ def main():
 
     if login.exec():
         # Login successful - show main window
-        # TODO: Implement MainWindow
-        print("Login successful! Main window would launch here.")
+        from .main_window import MainWindow
 
-        # Placeholder for main window
-        from PyQt6.QtWidgets import QMainWindow, QLabel
-        window = QMainWindow()
-        window.setWindowTitle("Secure Cartography v2")
-        window.setMinimumSize(1200, 800)
-
-        placeholder = QLabel("Main window coming soon...")
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        window.setCentralWidget(placeholder)
-
-        window.setStyleSheet(theme_manager.stylesheet)
+        window = MainWindow(vault=vault, theme_manager=theme_manager)
         window.show()
 
         sys.exit(app.exec())

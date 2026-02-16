@@ -482,6 +482,21 @@ class TopologyViewer(QWidget):
         self._run_js("TopologyViewer.exportPNG()", callback)
         return result[0]
 
+    def export_svg(self) -> Optional[str]:
+        """
+        Export current view as SVG.
+
+        Returns:
+            SVG string or None
+        """
+        result = [None]
+
+        def callback(svg_str):
+            result[0] = svg_str
+
+        self._run_js("TopologyViewer.exportSVG()", callback)
+        return result[0]
+
     @property
     def is_ready(self) -> bool:
         """Check if viewer is initialized."""

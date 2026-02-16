@@ -171,16 +171,23 @@ class DiscoveryLogPanel(Panel):
             self._trim_old_lines()
 
     def _trim_old_lines(self):
-        """Remove oldest lines when over max_lines."""
-        # Get all text, split into lines, keep recent ones
-        text = self.log_text.toPlainText()
-        lines = text.split('\n')
+        """Remove oldest lines when over max_lines using QTextDocument block removal."""
+        doc = self.log_text.document()
+        lines_to_remove = doc.blockCount() - self.max_lines
 
-        if len(lines) > self.max_lines:
-            # Keep last max_lines lines
-            # This is a simplistic approach; loses formatting
-            # For better performance, use QTextDocument block removal
-            pass  # TODO: implement proper trimming
+        if lines_to_remove <= 0:
+            return
+
+        cursor = QTextCursor(doc)
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        for _ in range(lines_to_remove):
+            cursor.movePosition(QTextCursor.MoveOperation.Down, QTextCursor.MoveMode.KeepAnchor)
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        # Remove the trailing empty block left after deletion
+        if cursor.block().text() == '':
+            cursor.deleteChar()
+        self._line_count = doc.blockCount()
 
     # === Convenience methods ===
 
